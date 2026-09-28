@@ -2,9 +2,11 @@ import hashlib
 import hmac
 import secrets
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .config import ADMIN_USERNAMES
 from .db import get_db
 from .models import User
 
@@ -35,4 +37,16 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     user = db.get(User, user_id) if user_id else None
     if user is None:
         raise LoginRequired()
+    return user
+
+
+def is_admin(db: Session, user: User) -> bool:
+    if ADMIN_USERNAMES:
+        return user.username.lower() in ADMIN_USERNAMES
+    return user.id == db.scalar(select(func.min(User.id)))
+
+
+def admin_user(user: User = Depends(current_user), db: Session = Depends(get_db)) -> User:
+    if not is_admin(db, user):
+        raise HTTPException(404)
     return user

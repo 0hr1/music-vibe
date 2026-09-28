@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "macros.html" import window %}
+{% block title %}Admin · music vibe{% endblock %}
+{% block content %}
+<div class="page">
+  {% if reset %}
+  <div class="notice">🔑 <b>{{ reset[0] }}</b>'s temporary password is <code class="secret">{{ reset[1] }}</code>.
+    Send it to them; it won't be shown again. They can change it on their Account page.</div>
+  {% endif %}
+
+  {% call window("New Invite Code", "✉️") %}
+  <p class="muted genre-help">Sign-up is closed; people need a code to make an account. Send them the link.</p>
+  <form method="post" action="/admin/invites" class="row wrap">
+    <label class="row"><span class="muted">Uses</span>
+      <input name="uses" type="number" min="1" value="1" class="narrow-num" placeholder="∞" aria-label="How many accounts it can make (empty: unlimited)"></label>
+    <label class="row"><span class="muted">Valid for</span>
+      <input name="days" type="number" min="1" value="14" class="narrow-num" placeholder="∞" aria-label="Days until it expires (empty: never)"><span class="muted">days</span></label>
+    <input name="note" maxlength="200" placeholder="note, e.g. who it's for" class="grow" aria-label="Note">
+    <button class="btn primary" type="submit">Create</button>
+  </form>
+  <p class="muted chart-note">Leave Uses or Valid for empty for no limit.</p>
+  {% endcall %}
+
+  {% call window("Invite Codes", "🎟️") %}
+  {% if codes %}
+  <ul class="vibe-list">
+    {% for c in codes %}
+    <li class="invite{% if not c.usable() %} spent{% endif %}">
+      <form method="post" action="/admin/invites/{{ c.id }}/delete" class="row wrap">
+        <code class="secret">{{ c.code }}</code>
+        <span class="grow invite-meta">
+          {% if c.note %}<b>{{ c.note }}</b> · {% endif %}
+          used {{ c.uses }}{% if c.max_uses is not none %}/{{ c.max_uses }}{% endif %} ·
+          {% if c.expired() %}expired{% elif c.expires_at %}expires {{ c.expires_at.strftime("%Y-%m-%d") }}{% else %}never expires{% endif %}
+          {% if c.usable() %}<br><input class="invite-link" readonly value="{{ signup_url }}?code={{ c.code }}"
+                                  onfocus="this.select()" aria-label="Sign-up link">{% endif %}
+        </span>
+        <button class="btn danger" type="submit" onclick="return confirm('Delete this invite code?')">Delete</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No invite codes yet.</p>
+  {% endif %}
+  {% endcall %}
+
+  {% call window("Users", "👥") %}
+  <ul class="vibe-list">
+    {% for u, count in users %}
+    <li>
+      <div class="row wrap">
+        <span class="grow"><b>{{ u.username }}</b> <span class="muted">· {{ count }} album{{ '' if count == 1 else 's' }}
+          · joined {{ u.created_at.strftime("%Y-%m-%d") }}{% if u.id == user.id %} · you{% endif %}</span></span>
+        {% if u.id != user.id %}
+        <form method="post" action="/admin/users/{{ u.id }}/reset-password">
+          <button class="btn" type="submit" onclick="return confirm('Give {{ u.username }} a new temporary password?')">Reset password</button>
+        </form>
+        <form method="post" action="/admin/users/{{ u.id }}/delete">
+          <button class="btn danger" type="submit"
+                  onclick="return confirm('Delete {{ u.username }} and their whole library? This can\'t be undone.')">Delete</button>
+        </form>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endcall %}
+</div>
+{% endblock %}

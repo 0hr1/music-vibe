@@ -11,7 +11,18 @@ docker compose up -d --build
 ```
 
 Open `http://<this machine>:8420` (port set by `PORT` in `.env`; over Tailscale: `http://<tailscale-hostname>:8420`).
-The first account can always be created; after that sign-up is closed unless `ALLOW_SIGNUP=true`.
+The first account can always be created, and it becomes the admin (or set `ADMIN_USERNAMES`). After that,
+people need an **invite code**: click your name in the taskbar, then *Invite codes & users*, and send them the
+sign-up link. Each code can be limited to a number of accounts and days. `ALLOW_SIGNUP=true` drops the need for codes.
+The same page resets a forgotten password or deletes an account.
+
+Locked out? The same admin tasks work from a shell in the container:
+
+```sh
+docker compose exec music-vibe python -m app.manage users
+docker compose exec music-vibe python -m app.manage reset-password <username>
+docker compose exec music-vibe python -m app.manage invite --uses 1 --days 14
+```
 
 Everything lives in `./data` (SQLite database, cover images, session key). Back up or move that folder
 to move the app to another server.

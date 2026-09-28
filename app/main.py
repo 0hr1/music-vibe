@@ -2,6 +2,7 @@ import asyncio
 import csv
 import io
 import re
+import secrets
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
@@ -16,11 +17,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import backup, covers, deezer, importer, musicbrainz, spotify
-from .auth import LoginRequired, current_user, hash_password, verify_password
+from . import backup, covers, deezer, importer, invites, musicbrainz, spotify
+from .auth import LoginRequired, admin_user, current_user, hash_password, is_admin, verify_password
 from .config import ALLOW_SIGNUP, COVERS_DIR, HTTPS_ONLY, SECRET_KEY, SESSION_MAX_AGE
 from .db import Base, engine, get_db
-from .models import Genre, Item, User, Vibe, item_genres
+from .models import Genre, InviteCode, Item, User, Vibe, item_genres
 
 HERE = Path(__file__).resolve().parent
 
@@ -81,6 +82,7 @@ def redirect(url: str) -> RedirectResponse:
 
 
 def signup_open(db: Session) -> bool:
+    """Open sign-up needs no invite code: when ALLOW_SIGNUP is on, or for the very first account."""
     return ALLOW_SIGNUP or db.scalar(select(func.count(User.id))) == 0
 
 
@@ -89,7 +91,7 @@ def signup_open(db: Session) -> bool:
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request, db: Session = Depends(get_db)):
-    return render(request, "login.html", signup_open=signup_open(db))
+    return render(request, "login.html", needs_code=not signup_open(db))
 
 
 @app.post("/login")
@@ -97,17 +99,15 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     user = db.scalar(select(User).where(func.lower(User.username) == username.strip().lower()))
     if not user or not verify_password(password, user.password_hash):
         return render(request, "login.html", 401, error="Wrong username or password.",
-                      username=username, signup_open=signup_open(db))
+                      username=username, needs_code=not signup_open(db))
     request.session.clear()
     request.session["user_id"] = user.id
     return redirect("/")
 
 
 @app.get("/register", response_class=HTMLResponse)
-def register_page(request: Request, db: Session = Depends(get_db)):
-    if not signup_open(db):
-        return redirect("/login")
-    return render(request, "register.html")
+def register_page(request: Request, code: str = "", db: Session = Depends(get_db)):
+    return render(request, "register.html", needs_code=not signup_open(db), code=invites.normalize(code))
 
 
 @app.post("/register")
@@ -116,10 +116,11 @@ def register(
     username: str = Form(...),
     password: str = Form(...),
     password2: str = Form(...),
+    code: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    if not signup_open(db):
-        return redirect("/login")
+    needs_code = not signup_open(db)
+    invite = invites.find_usable(db, code) if needs_code else None
     username = username.strip()
     if not re.fullmatch(r"[A-Za-z0-9_.-]{2,32}", username):
         error = "Username: 2-32 letters, numbers, _ . or -"
@@ -127,8 +128,12 @@ def register(
         error = "That username is taken."
     else:
         error = _password_problem(password, password2)
+    if not error and needs_code and not (invite and invites.redeem(db, invite)):
+        error = "That invite code doesn't work. It may have expired or been used up."
     if error:
-        return render(request, "register.html", 400, error=error, username=username)
+        db.rollback()
+        return render(request, "register.html", 400, error=error, username=username, needs_code=needs_code,
+                      code=invites.normalize(code))
     user = User(username=username, password_hash=hash_password(password))
     db.add(user)
     db.commit()
@@ -155,8 +160,9 @@ def logout(request: Request):
 
 
 @app.get("/account", response_class=HTMLResponse)
-def account_page(request: Request, saved: bool = False, user: User = Depends(current_user)):
-    return render(request, "account.html", user=user, saved=saved)
+def account_page(request: Request, saved: bool = False, user: User = Depends(current_user),
+                 db: Session = Depends(get_db)):
+    return render(request, "account.html", user=user, saved=saved, admin=is_admin(db, user))
 
 
 @app.post("/account/password")
@@ -173,10 +179,72 @@ def change_password(
     else:
         error = _password_problem(password, password2)
     if error:
-        return render(request, "account.html", 400, user=user, error=error)
+        return render(request, "account.html", 400, user=user, error=error, admin=is_admin(db, user))
     user.password_hash = hash_password(password)
     db.commit()
     return redirect("/account?saved=1")
+
+
+# ---------- admin: invite codes and users ----------
+
+
+def _admin_page(request: Request, db: Session, admin: User, status_code: int = 200, **ctx):
+    codes = db.scalars(select(InviteCode).order_by(InviteCode.created_at.desc())).all()
+    users = db.execute(
+        select(User, func.count(Item.id)).outerjoin(Item, Item.user_id == User.id).group_by(User.id).order_by(User.id)
+    ).all()
+    return render(request, "admin.html", status_code, user=admin, codes=codes, users=users,
+                  signup_url=str(request.url_for("register_page")), **ctx)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_page(request: Request, admin: User = Depends(admin_user), db: Session = Depends(get_db)):
+    return _admin_page(request, db, admin)
+
+
+@app.post("/admin/invites")
+def create_invite(uses: str = Form(""), days: str = Form(""), note: str = Form(""),
+                  admin: User = Depends(admin_user), db: Session = Depends(get_db)):
+    max_uses, valid_days = _int_or_none(uses), _int_or_none(days)
+    invites.create(db, max_uses=max_uses if max_uses and max_uses > 0 else None,
+                   days=valid_days if valid_days and valid_days > 0 else None, note=note.strip(), created_by=admin.id)
+    return redirect("/admin")
+
+
+@app.post("/admin/invites/{invite_id}/delete")
+def delete_invite(invite_id: int, admin: User = Depends(admin_user), db: Session = Depends(get_db)):
+    if invite := db.get(InviteCode, invite_id):
+        db.delete(invite)
+        db.commit()
+    return redirect("/admin")
+
+
+def _other_user(db: Session, admin: User, user_id: int) -> User:
+    """Admins manage other accounts here; their own goes through the account page."""
+    target = db.get(User, user_id)
+    if not target or target.id == admin.id:
+        raise HTTPException(404)
+    return target
+
+
+@app.post("/admin/users/{user_id}/reset-password", response_class=HTMLResponse)
+def reset_password(request: Request, user_id: int, admin: User = Depends(admin_user), db: Session = Depends(get_db)):
+    target = _other_user(db, admin, user_id)
+    temp = secrets.token_urlsafe(9)
+    target.password_hash = hash_password(temp)
+    db.commit()
+    return _admin_page(request, db, admin, reset=(target.username, temp))
+
+
+@app.post("/admin/users/{user_id}/delete")
+def delete_user(user_id: int, admin: User = Depends(admin_user), db: Session = Depends(get_db)):
+    target = _other_user(db, admin, user_id)
+    files = db.scalars(select(Item.cover_file).where(Item.user_id == target.id, Item.cover_file.is_not(None))).all()
+    db.delete(target)  # albums and vibes go with it (ON DELETE CASCADE)
+    db.commit()
+    for name in files:
+        covers.delete(name)
+    return redirect("/admin")
 
 
 # ---------- library ----------
