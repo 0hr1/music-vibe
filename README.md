@@ -16,6 +16,11 @@ The first account can always be created; after that sign-up is closed unless `AL
 Everything lives in `./data` (SQLite database, cover images, session key). Back up or move that folder
 to move the app to another server.
 
+The app snapshots the database into `data/backups` once a day and keeps the newest 14 (`BACKUP_KEEP`).
+To restore, stop the app and copy a snapshot over `data/music_vibe.db` (delete the `-wal`/`-shm` files next
+to it). Covers aren't in the snapshots; they're the plain files in `data/covers`. Each user can also download
+their library as CSV from the Stats page.
+
 ### Dev mode
 
 ```sh

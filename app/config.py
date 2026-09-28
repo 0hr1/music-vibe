@@ -10,6 +10,7 @@ def _bool(name: str, default: bool) -> bool:
 DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
 COVERS_DIR = DATA_DIR / "covers"
 DB_PATH = DATA_DIR / "music_vibe.db"
+BACKUPS_DIR = DATA_DIR / "backups"
 
 ALLOW_SIGNUP = _bool("ALLOW_SIGNUP", False)
 HTTPS_ONLY = _bool("HTTPS_ONLY", False)
@@ -19,9 +20,11 @@ SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID", "").strip()
 SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET", "").strip()
 
 SESSION_MAX_AGE = 60 * 60 * 24 * 365  # stay logged in for a year
+BACKUP_KEEP = max(1, int(os.environ.get("BACKUP_KEEP", "14") or 14))  # daily database snapshots to keep
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 COVERS_DIR.mkdir(parents=True, exist_ok=True)
+BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _secret_key() -> str:
