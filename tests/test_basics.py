@@ -29,3 +29,17 @@ def test_other_users_albums_hidden(client, make_album, db):
     db.add(Item(user_id=other.id, title="Secret Album"))
     db.commit()
     assert "Secret Album" not in client.get("/").text
+
+
+def test_healthz_and_security_headers():
+    r = TestClient(app).get("/healthz")
+    assert r.status_code == 200 and r.text == "ok"
+    assert r.headers["X-Content-Type-Options"] == "nosniff" and r.headers["X-Frame-Options"] == "DENY"
+
+
+def test_oversized_cover_upload_is_dropped(client, db):
+    from app import covers
+    from app.models import Item
+    big = b"\xff\xd8" + b"0" * (covers.MAX_BYTES + 10)
+    client.post("/albums", data={"title": "Huge"}, files={"cover": ("c.jpg", big, "image/jpeg")})
+    assert db.query(Item).filter_by(title="Huge").one().cover_file is None
