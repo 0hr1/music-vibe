@@ -3,7 +3,10 @@ MusicBrainz is used to refine them when it answers."""
 
 import httpx
 
+from .ratelimit import Throttle
+
 API = "https://api.deezer.com"
+throttle = Throttle(0.1)  # Deezer allows about 50 requests per 5 seconds
 
 
 def _client() -> httpx.AsyncClient:
@@ -16,6 +19,7 @@ def _year(date: str | None) -> int | None:
 
 async def search_albums(query: str, limit: int = 12) -> list[dict]:
     async with _client() as client:
+        await throttle.wait()
         resp = await client.get(f"{API}/search/album", params={"q": query, "limit": limit})
         resp.raise_for_status()
     return [
@@ -35,6 +39,7 @@ async def search_albums(query: str, limit: int = 12) -> list[dict]:
 
 async def get_album(album_id: str) -> dict:
     async with _client() as client:
+        await throttle.wait()
         resp = await client.get(f"{API}/album/{album_id}")
         resp.raise_for_status()
     a = resp.json()

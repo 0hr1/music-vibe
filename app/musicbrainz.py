@@ -6,10 +6,12 @@ short timeout and callers treat failure as "no data" rather than an error."""
 import httpx
 
 from .config import USER_AGENT
+from .ratelimit import Throttle
 
 MB = "https://musicbrainz.org/ws/2"
 CAA = "https://coverartarchive.org"
 MAX_GENRES = 5
+throttle = Throttle(1.0)  # MusicBrainz allows about one request per second from each IP
 
 
 def _client(timeout: float) -> httpx.AsyncClient:
@@ -46,6 +48,7 @@ async def search_albums(query: str, limit: int = 10, timeout: float = 12) -> lis
         return []
     params = {"query": f"({words}) AND (primarytype:album OR primarytype:ep)", "fmt": "json", "limit": limit}
     async with _client(timeout) as client:
+        await throttle.wait()
         resp = await client.get(f"{MB}/release-group", params=params)
         resp.raise_for_status()
     return [
@@ -64,6 +67,7 @@ async def search_albums(query: str, limit: int = 10, timeout: float = 12) -> lis
 
 async def get_album(mbid: str, timeout: float = 10) -> dict:
     async with _client(timeout) as client:
+        await throttle.wait()
         resp = await client.get(f"{MB}/release-group/{mbid}", params={"inc": "genres artist-credits", "fmt": "json"})
         resp.raise_for_status()
     rg = resp.json()
@@ -85,11 +89,13 @@ async def find_details(title: str, artist: str, timeout: float = 15) -> dict:
         return {}
     query = f'releasegroup:"{t}"' + (f' AND artist:"{a}"' if a else "")
     async with _client(timeout) as client:
+        await throttle.wait()
         resp = await client.get(f"{MB}/release-group", params={"query": query, "fmt": "json", "limit": 1})
         resp.raise_for_status()
         hits = resp.json().get("release-groups", [])
         if not hits or hits[0].get("score", 0) < 90:
             return {}
+        await throttle.wait()
         resp = await client.get(f"{MB}/release-group/{hits[0]['id']}", params={"inc": "genres", "fmt": "json"})
         resp.raise_for_status()
     rg = resp.json()
