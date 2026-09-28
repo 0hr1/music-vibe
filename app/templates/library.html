@@ -72,8 +72,22 @@
   {% call window("My Albums", "📀", cls="albums") %}
   <div class="toolbar">
     <button class="btn only-mobile" type="button" data-open-filters>🔍 Filters</button>
+    {% if total %}<button class="btn" type="button" data-select-mode aria-pressed="false">☑ Select</button>{% endif %}
     <a class="btn" href="/albums/new">+ Add album</a>
   </div>
+  <form id="bulk-form" class="bulk-bar window" hx-post="/albums/bulk" hx-target="#grid" hx-include="#filter-form, #grid">
+    <span class="bulk-count"><b data-bulk-count>0</b> selected</span>
+    <button class="btn" type="button" data-select-all>All</button>
+    {% if vibes %}
+    <select name="bulk_vibe" aria-label="Vibe">
+      {% for v in vibes %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}
+    </select>
+    <button class="btn" type="submit" name="action" value="add_vibe" data-needs-selection>+ Add vibe</button>
+    <button class="btn" type="submit" name="action" value="remove_vibe" data-needs-selection>− Remove vibe</button>
+    {% endif %}
+    <button class="btn danger" type="submit" name="action" value="delete" data-needs-selection>Delete</button>
+    <button class="btn" type="button" data-select-mode>Done</button>
+  </form>
   <div id="grid" class="grid-wrap">
     {% include "partials/grid.html" %}
   </div>
