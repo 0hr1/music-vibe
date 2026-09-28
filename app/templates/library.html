@@ -59,6 +59,7 @@
         <label class="check"><input type="checkbox" name="genre" value="{{ g }}" {% if g in f.genre %}checked{% endif %}> {{ g }}</label>
         {% endfor %}
       </div>
+      <a class="manage-link" href="/genres">Manage genres…</a>
     </fieldset>
     {% endif %}
 
