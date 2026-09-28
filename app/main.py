@@ -121,15 +121,12 @@ def register(
     if not signup_open(db):
         return redirect("/login")
     username = username.strip()
-    error = None
     if not re.fullmatch(r"[A-Za-z0-9_.-]{2,32}", username):
         error = "Username: 2-32 letters, numbers, _ . or -"
-    elif len(password) < 8:
-        error = "Password must be at least 8 characters."
-    elif password != password2:
-        error = "Passwords don't match."
     elif db.scalar(select(User).where(func.lower(User.username) == username.lower())):
         error = "That username is taken."
+    else:
+        error = _password_problem(password, password2)
     if error:
         return render(request, "register.html", 400, error=error, username=username)
     user = User(username=username, password_hash=hash_password(password))
@@ -140,10 +137,46 @@ def register(
     return redirect("/vibes?welcome=1")
 
 
+def _password_problem(password: str, password2: str) -> str | None:
+    if len(password) < 8:
+        return "Password must be at least 8 characters."
+    if password != password2:
+        return "Passwords don't match."
+    return None
+
+
 @app.post("/logout")
 def logout(request: Request):
     request.session.clear()
     return redirect("/login")
+
+
+# ---------- account ----------
+
+
+@app.get("/account", response_class=HTMLResponse)
+def account_page(request: Request, saved: bool = False, user: User = Depends(current_user)):
+    return render(request, "account.html", user=user, saved=saved)
+
+
+@app.post("/account/password")
+def change_password(
+    request: Request,
+    current: str = Form(...),
+    password: str = Form(...),
+    password2: str = Form(...),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    if not verify_password(current, user.password_hash):
+        error = "Current password is wrong."
+    else:
+        error = _password_problem(password, password2)
+    if error:
+        return render(request, "account.html", 400, user=user, error=error)
+    user.password_hash = hash_password(password)
+    db.commit()
+    return redirect("/account?saved=1")
 
 
 # ---------- library ----------
