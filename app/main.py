@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
@@ -46,6 +46,30 @@ app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 app.mount("/covers", StaticFiles(directory=COVERS_DIR), name="covers")
 
 templates = Jinja2Templates(directory=HERE / "templates")
+
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+}
+if HTTPS_ONLY:
+    SECURITY_HEADERS["Strict-Transport-Security"] = "max-age=31536000"
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
+
+
+@app.get("/healthz")
+def healthz(db: Session = Depends(get_db)):
+    """For the host's health checks: the app is up and the database answers."""
+    db.execute(text("SELECT 1"))
+    return Response("ok", media_type="text/plain")
 
 SORTS = {
     "added": Item.created_at,
@@ -594,7 +618,7 @@ async def create_album(
     item.genres = _parse_genres(db, genres)
     item.vibes = db.scalars(select(Vibe).where(Vibe.user_id == user.id, Vibe.id.in_(vibes))).all()
     if cover and cover.filename:
-        item.cover_file = covers.save_upload(await cover.read(), cover.content_type or "")
+        item.cover_file = covers.save_upload(await cover.read(covers.MAX_BYTES + 1), cover.content_type or "")
     elif covers.is_trusted_url(cover_url):
         item.cover_file = await covers.download(cover_url)
     db.add(item)
@@ -633,7 +657,7 @@ async def update_album(
     item.genres = _parse_genres(db, genres)
     item.vibes = db.scalars(select(Vibe).where(Vibe.user_id == user.id, Vibe.id.in_(vibes))).all()
     if cover and cover.filename:
-        if new := covers.save_upload(await cover.read(), cover.content_type or ""):
+        if new := covers.save_upload(await cover.read(covers.MAX_BYTES + 1), cover.content_type or ""):
             covers.delete(item.cover_file)
             item.cover_file = new
     elif remove_cover:
