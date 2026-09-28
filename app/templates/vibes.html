@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "macros.html" import window %}
+{% block title %}Vibes · music vibe{% endblock %}
+{% block content %}
+{% set suggestions = [("winter", "#9ec9ff"), ("spring", "#9be39b"), ("summer", "#ffd24a"), ("fall", "#d9822b"),
+                      ("happy", "#ffb3e6"), ("melancholic", "#5a5f9e"), ("angry", "#d7263d"), ("running", "#27c4a8")] %}
+<div class="page">
+  {% if welcome %}
+  <div class="notice">👋 Welcome! Start by making a few vibes. You'll tag albums with them.</div>
+  {% endif %}
+
+  {% call window("New Vibe", "✨") %}
+  <form method="post" action="/vibes" class="row wrap">
+    <input type="color" name="color" value="#8a5cd6" aria-label="Color">
+    <input name="name" placeholder="e.g. rainy sunday" maxlength="64" required class="grow" aria-label="Vibe name">
+    <button class="btn primary" type="submit">Create</button>
+  </form>
+  {% set existing = vibes|map(attribute="name")|map("lower")|list %}
+  {% set missing = suggestions|rejectattr("0", "in", existing)|list %}
+  {% if missing %}
+  <div class="suggestions">
+    <span class="muted">Quick add:</span>
+    {% for name, color in missing %}
+    <form method="post" action="/vibes">
+      <input type="hidden" name="name" value="{{ name }}"><input type="hidden" name="color" value="{{ color }}">
+      <button class="chip as-button" style="--c: {{ color }}; --t: {{ color|text_on }}" type="submit">+ {{ name }}</button>
+    </form>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endcall %}
+
+  {% call window("My Vibes", "🎨") %}
+  {% if vibes %}
+  <ul class="vibe-list">
+    {% for v in vibes %}
+    <li>
+      <form method="post" action="/vibes/{{ v.id }}" class="row wrap">
+        <input type="color" name="color" value="{{ v.color }}" aria-label="Color">
+        <input name="name" value="{{ v.name }}" maxlength="64" required class="grow" aria-label="Name">
+        <span class="muted count">{{ counts.get(v.id, 0) }} album{{ '' if counts.get(v.id, 0) == 1 else 's' }}</span>
+        <button class="btn" type="submit">Save</button>
+        <button class="btn danger" type="submit" formaction="/vibes/{{ v.id }}/delete"
+                onclick="return confirm('Delete this vibe? Albums keep everything else.')">Delete</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No vibes yet. Create one above.</p>
+  {% endif %}
+  {% endcall %}
+</div>
+{% endblock %}

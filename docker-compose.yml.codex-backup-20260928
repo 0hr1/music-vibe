@@ -1,0 +1,11 @@
+services:
+  music-vibe:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8420}:8000"
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./data:/data

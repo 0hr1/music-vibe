@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "macros.html" import window %}
+{% block title %}Create account · music vibe{% endblock %}
+{% block content %}
+<div class="center-stage">
+  {% call window("New User", "👤", cls="dialog") %}
+  <form method="post" action="/register" class="stack">
+    <p class="dialog-intro"><span class="big-icon" aria-hidden="true">💿</span>Create your music vibe account.</p>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <label class="field"><span>User name:</span>
+      <input name="username" value="{{ username or '' }}" autocomplete="username" autocapitalize="none" required autofocus></label>
+    <label class="field"><span>Password:</span>
+      <input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+    <label class="field"><span>Confirm:</span>
+      <input name="password2" type="password" autocomplete="new-password" minlength="8" required></label>
+    <div class="button-row">
+      <a class="btn" href="/login">Cancel</a>
+      <button class="btn primary" type="submit">Create</button>
+    </div>
+  </form>
+  {% endcall %}
+</div>
+{% endblock %}

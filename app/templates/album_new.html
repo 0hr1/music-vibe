@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "macros.html" import window %}
+{% block title %}Add album · music vibe{% endblock %}
+{% block content %}
+<div class="page">
+  {% call window("Find Album", "🔍") %}
+  <div class="stack">
+    <label class="field"><span>Search albums</span>
+      <input type="search" name="q" placeholder="album name, artist, or both" autocomplete="off" autofocus
+             hx-get="/albums/search" hx-target="#results" hx-indicator="#search-busy"
+             hx-trigger="input changed delay:500ms, keyup[key=='Enter']"></label>
+    <div id="search-busy" class="busy">Searching<span class="dots"></span></div>
+    <div id="results" class="results"></div>
+    <p class="muted">Adding lots? <a href="/albums/import">Import a list</a></p>
+  </div>
+  {% endcall %}
+
+  {% call window("Album Properties", "📀", id="album-window") %}
+  <form method="post" action="/albums" enctype="multipart/form-data" class="stack">
+    <div id="album-fields">
+      {% include "partials/album_fields.html" %}
+    </div>
+    <div class="button-row">
+      <a class="btn" href="/">Cancel</a>
+      <button class="btn primary" type="submit">Add to library</button>
+    </div>
+  </form>
+  {% endcall %}
+</div>
+{% endblock %}

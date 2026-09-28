@@ -1,0 +1,9 @@
+{%- macro window(title, icon="", id="", cls="") -%}
+<section class="window {{ cls }}"{% if id %} id="{{ id }}"{% endif %}>
+  <div class="title-bar">
+    <span class="title-text">{% if icon %}<span class="title-icon" aria-hidden="true">{{ icon }}</span>{% endif %}{{ title }}</span>
+    <span class="title-controls" aria-hidden="true"><span>_</span><span>□</span><span>×</span></span>
+  </div>
+  <div class="window-body">{{ caller() }}</div>
+</section>
+{%- endmacro -%}

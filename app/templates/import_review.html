@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "macros.html" import window %}
+{% block title %}Review import · music vibe{% endblock %}
+{% block content %}
+{%- set found = rows|selectattr("results")|list -%}
+{%- set unsure = found|rejectattr("sure")|list -%}
+<div class="page">
+  {% call window("Review Import", "📋") %}
+  <form method="post" action="/albums/import/add" class="stack" data-busy="Adding albums…">
+    <div class="status-bar">
+      <span>{{ found|length }} of {{ rows|length }} matched</span>
+      {% if unsure %}<span>{{ unsure|length }} marked “check this”</span>{% endif %}
+      {% if found|length < rows|length %}<span>{{ rows|length - found|length }} not found</span>{% endif %}
+    </div>
+    <p class="muted">Untick anything you don't want. If a match is wrong, open “Other matches” to pick another
+      or search again. Albums already in your library start unticked.</p>
+    <ol class="import-list">
+      {% for row in rows %}{% set i = loop.index0 %}{% include "partials/import_row.html" %}{% endfor %}
+    </ol>
+    <div class="button-row">
+      <a class="btn" href="/albums/import">Start over</a>
+      <button class="btn primary" type="submit">Add selected</button>
+    </div>
+  </form>
+  {% endcall %}
+</div>
+{% endblock %}

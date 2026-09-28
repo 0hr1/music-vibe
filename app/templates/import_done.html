@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "macros.html" import window %}
+{% block title %}Import done · music vibe{% endblock %}
+{% block content %}
+<div class="page">
+  {% call window("Import Complete", "✅") %}
+  <div class="stack">
+    <p><b>Added {{ added|length }} album{{ '' if added|length == 1 else 's' }}.</b>
+      {% if failed %}<span class="error">{{ failed }} couldn't be loaded from Deezer; add those by hand.</span>{% endif %}</p>
+    {% if added %}
+    <ul class="result-list">
+      {% for a in added %}
+      <li class="done-item">
+        <span class="thumb">{% if a.cover_file %}<img src="/covers/{{ a.cover_file }}" alt="">{% endif %}</span>
+        <span class="result-text"><b>{{ a.title }}</b><span>{{ a.creator }}</span>
+          <small>{% if a.year %}{{ a.year }}{% endif %}{% if a.spotify_url %} · Spotify ✓{% endif %}</small></span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <div class="button-row">
+      <a class="btn" href="/albums/import">Import more</a>
+      <a class="btn primary" href="/">Go to library</a>
+    </div>
+  </div>
+  {% endcall %}
+</div>
+{% endblock %}

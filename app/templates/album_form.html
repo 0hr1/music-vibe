@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "macros.html" import window %}
+{% block title %}{{ album.title }} · music vibe{% endblock %}
+{% block content %}
+<div class="page">
+  {% call window(album.title ~ " Properties", "📀") %}
+  <form method="post" action="/albums/{{ album.id }}" enctype="multipart/form-data" class="stack">
+    {% include "partials/album_fields.html" %}
+    <div class="button-row">
+      {% if album.spotify_url %}<a class="btn spotify" href="{{ album.spotify_url }}" target="_blank" rel="noopener">▶ Spotify</a>{% endif %}
+      <span class="spacer"></span>
+      <a class="btn" href="/">Cancel</a>
+      <button class="btn primary" type="submit">Save</button>
+    </div>
+  </form>
+  <form method="post" action="/albums/{{ album.id }}/delete" class="danger-zone"
+        data-confirm="Delete “{{ album.title }}” from your library?" onsubmit="return confirm(this.dataset.confirm)">
+    <button class="btn danger" type="submit">Delete album</button>
+  </form>
+  {% endcall %}
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{#- Shared album fields. Values come from an existing `album` (edit) or a MusicBrainz `prefill` (add). -#}
+{%- if album -%}
+  {%- set v_title, v_creator, v_year = album.title, album.creator, album.year -%}
+  {%- set v_genres = album.genres|map(attribute="name")|join(", ") -%}
+  {%- set v_selected = album.vibes|map(attribute="id")|list -%}
+  {%- set v_spotify, v_notes = album.spotify_url, album.notes -%}
+  {%- set v_cover = "/covers/" ~ album.cover_file if album.cover_file else "" -%}
+{%- else -%}
+  {%- set prefill = prefill or {} -%}
+  {%- set v_title, v_creator, v_year = prefill.title, prefill.artist, prefill.year -%}
+  {%- set v_genres = (prefill.genres or [])|join(", ") -%}
+  {%- set v_selected = [] -%}
+  {%- set v_spotify, v_notes = "", "" -%}
+  {%- set v_cover = prefill.cover_url or "" -%}
+{%- endif -%}
+{% if lookup_failed %}<p class="error">Couldn't load that album's details. You can fill the fields in by hand.</p>{% endif %}
+{% if not album %}
+<input type="hidden" name="external_id" value="{{ prefill.external_id or '' }}">
+<input type="hidden" name="cover_url" value="{{ prefill.cover_url or '' }}">
+{% endif %}
+<div class="album-fields">
+  <div class="cover-field">
+    <div class="cover big">
+      {% if v_cover %}<img src="{{ v_cover }}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'no-cover',textContent:'💿'}))">
+      {% else %}<span class="no-cover" aria-hidden="true">💿</span>{% endif %}
+    </div>
+    <label class="field"><span>{{ "Replace cover" if v_cover else "Upload cover" }}</span>
+      <input type="file" name="cover" accept="image/jpeg,image/png,image/webp,image/gif"></label>
+    {% if album and album.cover_file %}
+    <label class="check"><input type="checkbox" name="remove_cover" value="true"> Remove cover</label>
+    {% endif %}
+  </div>
+  <div class="stack grow">
+    <label class="field"><span>Title</span>
+      <input name="title" value="{{ v_title or '' }}" required maxlength="500"></label>
+    <label class="field"><span>Artist</span>
+      <input name="creator" value="{{ v_creator or '' }}" maxlength="500"></label>
+    {% if refine %}
+    <div class="stack" data-refine data-original="{{ v_year or '' }}|{{ v_genres }}" hx-trigger="load" hx-swap="outerHTML"
+         hx-get="/albums/refine?title={{ v_title|urlencode }}&artist={{ v_creator|urlencode }}&year={{ v_year or '' }}&genres={{ v_genres|urlencode }}">
+      {% include "partials/year_genres.html" %}
+      <small class="muted">Checking MusicBrainz for original year and detailed genres<span class="dots"></span></small>
+    </div>
+    {% else %}
+    {% include "partials/year_genres.html" %}
+    {% endif %}
+    <fieldset class="group">
+      <legend>Vibes</legend>
+      {% if vibes %}
+      <div class="chips">
+        {% for v in vibes %}
+        <label class="chip-toggle" style="--c: {{ v.color }}; --t: {{ v.color|text_on }}">
+          <input type="checkbox" name="vibes" value="{{ v.id }}" {% if v.id in v_selected %}checked{% endif %}>
+          <span>{{ v.name }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted">You haven't made any vibes yet. <a href="/vibes">Create some</a> and come back.</p>
+      {% endif %}
+    </fieldset>
+    {% with auto = spotify_enabled and v_title and not v_spotify %}{% include "partials/spotify_field.html" %}{% endwith %}
+    <label class="field"><span>Notes</span>
+      <textarea name="notes" rows="3">{{ v_notes or '' }}</textarea></label>
+  </div>
+</div>

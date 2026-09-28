@@ -1,0 +1,32 @@
+{#- One line of the import review. Radios `pick-{i}` choose the match; checkbox `row` includes it. -#}
+{%- macro option(r, i, checked) -%}
+<label class="import-option">
+  <input type="radio" name="pick-{{ i }}" value="{{ r.id }}" {% if checked %}checked{% endif %}>
+  <span class="thumb"><img src="{{ r.thumb }}" alt="" loading="lazy" onerror="this.remove()"></span>
+  <span class="result-text">
+    <b>{{ r.title }}</b>
+    <span>{{ r.artist }}</span>
+    <small>{{ r.type }}{% if r.owned %} · <em>already in library</em>{% endif %}</small>
+  </span>
+</label>
+{%- endmacro -%}
+{%- set best = row.results[0] if row.results else None -%}
+<li class="import-row{% if best and not row.sure %} unsure{% endif %}{% if not best %} missing{% endif %}" id="import-row-{{ i }}">
+  <input type="checkbox" name="row" value="{{ i }}" aria-label="Add “{{ row.line }}”"
+         {% if best and not best.owned %}checked{% endif %} {% if not best %}disabled{% endif %}>
+  <div class="import-body">
+    <small class="import-line">“{{ row.line }}”{% if best and not row.sure %} · <b>check this</b>{% endif %}</small>
+    {% if best %}{{ option(best, i, true) }}
+    {% elif row.error %}<p class="error">Deezer didn't answer. Try searching again.</p>
+    {% else %}<p class="error">No match found. Try different words.</p>{% endif %}
+    <details {% if not best or not row.sure %}open{% endif %}>
+      <summary>{% if row.results|length > 1 %}Other matches ({{ row.results|length - 1 }}) / {% endif %}search again</summary>
+      {% for r in row.results[1:] %}{{ option(r, i, false) }}{% endfor %}
+      <div class="row import-search">
+        <input id="import-q-{{ i }}" name="q" value="{{ row.line }}" aria-label="Search again" data-enter-click>
+        <button class="btn" type="button" hx-get="/albums/import/row" hx-vals='{"i": {{ i }}}'
+                hx-include="#import-q-{{ i }}" hx-target="#import-row-{{ i }}" hx-swap="outerHTML">Search</button>
+      </div>
+    </details>
+  </div>
+</li>

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "macros.html" import window %}
+{% block title %}Library · music vibe{% endblock %}
+{% block content %}
+<div class="library">
+  <div class="filters-backdrop" data-close-filters></div>
+  {% call window("Filters", "🔍", id="filters", cls="filters") %}
+  <form hx-get="/" hx-target="#grid" hx-push-url="true" hx-indicator="#grid"
+        hx-trigger="change, input changed delay:300ms from:find input[type=search]"
+        class="stack" id="filter-form">
+    <label class="field"><span>Search</span>
+      <input type="search" name="q" value="{{ f.q }}" placeholder="title or artist"></label>
+
+    <fieldset class="group">
+      <legend>Vibes <small>(match all)</small></legend>
+      {% if vibes %}
+      <div class="chips">
+        {% for v in vibes %}
+        <label class="chip-toggle" style="--c: {{ v.color }}; --t: {{ v.color|text_on }}">
+          <input type="checkbox" name="vibe" value="{{ v.id }}" {% if v.id in f.vibe %}checked{% endif %}>
+          <span>{{ v.name }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted">No vibes yet. <a href="/vibes">Make some</a></p>
+      {% endif %}
+    </fieldset>
+
+    <fieldset class="group">
+      <legend>Year</legend>
+      <div class="row">
+        <input type="number" name="year_min" value="{{ f.year_min or '' }}" placeholder="{{ years[0] or 'from' }}" inputmode="numeric" aria-label="From year">
+        <span>–</span>
+        <input type="number" name="year_max" value="{{ f.year_max or '' }}" placeholder="{{ years[1] or 'to' }}" inputmode="numeric" aria-label="To year">
+      </div>
+    </fieldset>
+
+    <fieldset class="group">
+      <legend>Sort</legend>
+      <div class="row">
+        <select name="sort" aria-label="Sort by">
+          {% for key, label in [("added", "Date added"), ("year", "Year"), ("title", "Title"), ("artist", "Artist")] %}
+          <option value="{{ key }}" {% if f.sort == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <select name="order" aria-label="Order">
+          <option value="desc" {% if f.order == 'desc' %}selected{% endif %}>↓ Desc</option>
+          <option value="asc" {% if f.order == 'asc' %}selected{% endif %}>↑ Asc</option>
+        </select>
+      </div>
+    </fieldset>
+
+    {% if genres %}
+    <fieldset class="group">
+      <legend>Genres <small>(match any)</small></legend>
+      <div class="genre-list">
+        {% for g in genres %}
+        <label class="check"><input type="checkbox" name="genre" value="{{ g }}" {% if g in f.genre %}checked{% endif %}> {{ g }}</label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    {% endif %}
+
+    <div class="button-row">
+      <a class="btn" href="/">Clear</a>
+      <button class="btn only-mobile" type="button" data-close-filters>Done</button>
+    </div>
+  </form>
+  {% endcall %}
+
+  {% call window("My Albums", "📀", cls="albums") %}
+  <div class="toolbar">
+    <button class="btn only-mobile" type="button" data-open-filters>🔍 Filters</button>
+    <a class="btn" href="/albums/new">+ Add album</a>
+  </div>
+  <div id="grid" class="grid-wrap">
+    {% include "partials/grid.html" %}
+  </div>
+  {% endcall %}
+</div>
+{% endblock %}

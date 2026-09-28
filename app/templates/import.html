@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "macros.html" import window %}
+{% block title %}Import albums · music vibe{% endblock %}
+{% block content %}
+<div class="page">
+  {% call window("Import Albums", "📋") %}
+  <form method="post" action="/albums/import" class="stack" data-busy="Matching albums…">
+    <p class="muted import-help">Paste a list, one album per line, written however you like:
+      <code>Fishmans - Long Season</code>, <code>is this it the strokes</code>… Numbering and bullets are fine.
+      You'll check the matches before anything is added. Up to {{ max_lines }} lines.</p>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <label class="field"><span>Albums</span>
+      <textarea name="text" rows="14" required autofocus placeholder="Fishmans - Long Season&#10;The Strokes - Is This It&#10;…">{{ text or '' }}</textarea></label>
+    <div class="button-row">
+      <a class="btn" href="/albums/new">Cancel</a>
+      <button class="btn primary" type="submit">Find matches</button>
+    </div>
+  </form>
+  {% endcall %}
+</div>
+{% endblock %}
