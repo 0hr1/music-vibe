@@ -1,0 +1,6 @@
+# Streams the SQLite database to S3-compatible storage (e.g. Fly's Tigris) as it changes.
+# Only used when LITESTREAM_REPLICA_URL is set; see deploy/entrypoint.sh and the README.
+dbs:
+  - path: ${DATA_DIR}/music_vibe.db
+    replica:
+      url: ${LITESTREAM_REPLICA_URL}

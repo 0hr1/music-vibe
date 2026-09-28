@@ -1,0 +1,31 @@
+# Fly.io config. First deploy: see "Hosting on Fly.io" in the README.
+app = "music-vibe"          # must be unique across Fly; `fly launch` offers to rename it
+primary_region = "fra"      # pick the closest: `fly platform regions`
+
+[env]
+  DATA_DIR = "/data"
+  HTTPS_ONLY = "true"
+
+# Database, covers and session key live on this volume (one machine only: SQLite isn't shared).
+[mounts]
+  source = "music_vibe_data"
+  destination = "/data"
+  snapshot_retention = 14   # Fly's daily volume snapshots, in days (this is what backs up covers)
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"   # sleeps when nobody's using it (cheaper); wakes in a few seconds
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

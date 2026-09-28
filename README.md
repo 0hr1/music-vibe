@@ -32,6 +32,35 @@ To restore, stop the app and copy a snapshot over `data/music_vibe.db` (delete t
 to it). Covers aren't in the snapshots; they're the plain files in `data/covers`. Each user can also download
 their library as CSV from the Stats page.
 
+## Hosting on Fly.io
+
+`fly.toml` runs the same Docker image on one small machine with a volume for `/data`. HTTPS comes
+built in (`https://<app>.fly.dev`). Install `flyctl` and run `fly auth login`, then from this folder:
+
+```sh
+fly launch --no-deploy --copy-config        # creates the app; rename it if "music-vibe" is taken
+fly volumes create music_vibe_data --size 1 --region <same region as fly.toml>
+fly secrets set MB_CONTACT=you@example.com SPOTIFY_CLIENT_ID=... SPOTIFY_CLIENT_SECRET=...
+fly deploy
+```
+
+Open the site, create your account right away (the first account is the admin), then hand out invite codes.
+
+**Backups.** Fly snapshots the volume daily (kept 14 days, set in `fly.toml`), which covers everything
+including covers. For the database, also stream every change off the machine with Litestream to Tigris,
+Fly's S3 storage:
+
+```sh
+fly storage create                          # sets the AWS_* secrets and prints the bucket name
+fly secrets set LITESTREAM_REPLICA_URL="s3://<bucket>/music_vibe.db?endpoint=fly.storage.tigris.dev&region=auto"
+```
+
+If the volume is ever lost, create a new one and deploy: on start the app restores the database from
+the replica. Admin commands: `fly ssh console -C "python -m app.manage users"`.
+
+The machine sleeps when idle (`auto_stop_machines`) so it costs less; the first visit after that takes a
+few seconds. Set `min_machines_running = 1` in `fly.toml` if that bothers you.
+
 ### Dev mode
 
 ```sh
@@ -53,4 +82,5 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ## Later
 
 - Other item kinds (movies, wallpapers): the `items` table already has a `kind` column
-- HTTPS: set `HTTPS_ONLY=true` once served behind TLS (e.g. `tailscale serve` or a reverse proxy)
+- HTTPS elsewhere: set `HTTPS_ONLY=true` once served behind TLS (e.g. `tailscale serve` or a reverse proxy).
+  Uvicorn trusts the proxy's forwarded headers, so don't expose port 8000 directly to the internet.
