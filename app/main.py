@@ -1,5 +1,9 @@
 import asyncio
+import csv
+import io
 import re
+from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -12,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import covers, deezer, importer, musicbrainz, spotify
+from . import backup, covers, deezer, importer, musicbrainz, spotify
 from .auth import LoginRequired, current_user, hash_password, verify_password
 from .config import ALLOW_SIGNUP, COVERS_DIR, HTTPS_ONLY, SECRET_KEY, SESSION_MAX_AGE
 from .db import Base, engine, get_db
@@ -22,7 +26,14 @@ HERE = Path(__file__).resolve().parent
 
 Base.metadata.create_all(engine)
 
-app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    task = asyncio.create_task(backup.run_forever())
+    yield
+    task.cancel()
+
+
+app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,
@@ -550,6 +561,26 @@ def stats_page(request: Request, user: User = Depends(current_user), db: Session
         genre_total=db.scalar(select(func.count(func.distinct(item_genres.c.genre_id))).join(Item).where(mine)),
         vibe_counts=vibe_counts, genre_counts=genre_counts, artist_counts=artist_counts, decades=decades,
     )
+
+
+@app.get("/export.csv")
+def export_csv(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    albums = db.scalars(
+        select(Item).where(Item.user_id == user.id, Item.kind == "album")
+        .options(selectinload(Item.vibes), selectinload(Item.genres))
+        .order_by(func.lower(Item.creator), Item.year, func.lower(Item.title))
+    ).all()
+    out = io.StringIO()
+    out.write("\ufeff")  # BOM so Excel reads UTF-8 (accents, Japanese titles...) correctly
+    w = csv.writer(out)
+    w.writerow(["title", "artist", "year", "vibes", "genres", "spotify_url", "notes", "added"])
+    for a in albums:
+        w.writerow([a.title, a.creator, a.year or "", ", ".join(v.name for v in a.vibes),
+                    ", ".join(g.name for g in a.genres), a.spotify_url or "", a.notes or "",
+                    a.created_at.date().isoformat() if a.created_at else ""])
+    filename = f"music-vibe-{date.today().isoformat()}.csv"
+    return Response(out.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 # ---------- genres ----------

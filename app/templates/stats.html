@@ -22,6 +22,7 @@
       <span class="meter" role="presentation"><span class="meter-fill" style="width: {{ tagged / total * 100 }}%"></span></span>
     </div>
   </div>
+  <p class="export-link"><a href="/export.csv" download>⬇ Download my library as CSV</a></p>
   {% else %}
   <p class="muted">Nothing to count yet. <a href="/albums/new">Add some albums</a> and come back.</p>
   {% endif %}
