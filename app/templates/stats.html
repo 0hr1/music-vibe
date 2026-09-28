@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "macros.html" import window %}
+{% block title %}Stats · music vibe{% endblock %}
+{%- macro hbar(label, count, top, href) -%}
+<li><a class="hbar" href="{{ href }}" aria-label="{{ label }}: {{ count }} album{{ '' if count == 1 else 's' }}">
+  <span class="hbar-label">{{ caller() }}</span>
+  <span class="hbar-track"><span class="hbar-fill" style="width: {{ (count / top * 100) if top else 0 }}%"></span></span>
+  <span class="hbar-value">{{ count }}</span></a></li>
+{%- endmacro -%}
+{% block content %}
+<div class="stats-page">
+  {% call window("Library Properties", "📊", cls="stats-wide") %}
+  {% if total %}
+  <div class="tiles">
+    <div class="tile hero"><span class="tile-value">{{ total }}</span><span class="tile-label">album{{ '' if total == 1 else 's' }}</span></div>
+    <div class="tile"><span class="tile-value">{{ artists }}</span><span class="tile-label">artist{{ '' if artists == 1 else 's' }}</span></div>
+    <div class="tile"><span class="tile-value">{{ genre_total }}</span><span class="tile-label">genre{{ '' if genre_total == 1 else 's' }}</span></div>
+    {% if years[0] %}<div class="tile"><span class="tile-value">{{ years[0] }}{% if years[1] != years[0] %}–{{ years[1] }}{% endif %}</span><span class="tile-label">years covered</span></div>{% endif %}
+    <div class="tile">
+      <span class="tile-value">{{ (tagged / total * 100)|round|int }}%</span>
+      <span class="tile-label">tagged with a vibe ({{ tagged }} of {{ total }})</span>
+      <span class="meter" role="presentation"><span class="meter-fill" style="width: {{ tagged / total * 100 }}%"></span></span>
+    </div>
+  </div>
+  {% else %}
+  <p class="muted">Nothing to count yet. <a href="/albums/new">Add some albums</a> and come back.</p>
+  {% endif %}
+  {% endcall %}
+
+  {% if total %}
+  {% if decades %}
+  {% call window("Albums by Decade", "📅", cls="stats-wide") %}
+  {% set top = decades|map(attribute="1")|max %}
+  <div class="columns" role="list">
+    {% for decade, count in decades %}
+    <a class="column" role="listitem" href="/?year_min={{ decade }}&year_max={{ decade + 9 }}"
+       data-tip="{{ decade }}s: {{ count }} album{{ '' if count == 1 else 's' }}"
+       aria-label="{{ decade }}s: {{ count }} album{{ '' if count == 1 else 's' }}">
+      <span class="column-plot">
+        {% if count == top %}<span class="column-peak">{{ count }}</span>{% endif %}
+        <span class="column-fill" style="height: {{ count / top * 100 }}%"></span>
+      </span>
+      <span class="column-label">{{ decade }}s</span>
+    </a>
+    {% endfor %}
+  </div>
+  <p class="muted chart-note">Hover a column for its count; click to see those albums.</p>
+  {% endcall %}
+  {% endif %}
+
+  <div class="stats-grid">
+    {% call window("Albums by Vibe", "🎨") %}
+    {% if vibe_counts %}
+    {% set top = vibe_counts|map(attribute="1")|max %}
+    <ol class="hbars">
+      {% for v, count in vibe_counts %}
+      {% call hbar(v.name, count, top, "/?vibe=" ~ v.id) %}<span class="chip" style="--c: {{ v.color }}; --t: {{ v.color|text_on }}">{{ v.name }}</span>{% endcall %}
+      {% endfor %}
+    </ol>
+    {% if tagged < total %}<p class="muted chart-note">{{ total - tagged }} album{{ '' if total - tagged == 1 else 's' }} without any vibe.</p>{% endif %}
+    {% else %}<p class="muted">No vibes yet. <a href="/vibes">Make some</a>.</p>{% endif %}
+    {% endcall %}
+
+    {% call window("Top Genres", "🏷️") %}
+    {% if genre_counts %}
+    {% set top = genre_counts[0][1] %}
+    <ol class="hbars">
+      {% for name, count in genre_counts %}
+      {% call hbar(name, count, top, "/?genre=" ~ name|urlencode) %}{{ name }}{% endcall %}
+      {% endfor %}
+    </ol>
+    {% else %}<p class="muted">No genres yet.</p>{% endif %}
+    {% endcall %}
+
+    {% call window("Top Artists", "🎤") %}
+    {% if artist_counts %}
+    {% set top = artist_counts[0][1] %}
+    <ol class="hbars">
+      {% for name, count in artist_counts %}
+      {% call hbar(name, count, top, "/?q=" ~ name|urlencode) %}{{ name }}{% endcall %}
+      {% endfor %}
+    </ol>
+    {% else %}<p class="muted">No artists yet.</p>{% endif %}
+    {% endcall %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -518,6 +518,40 @@ def delete_album(album_id: int, user: User = Depends(current_user), db: Session 
     return redirect("/")
 
 
+# ---------- stats ----------
+
+
+@app.get("/stats", response_class=HTMLResponse)
+def stats_page(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    mine = (Item.user_id == user.id) & (Item.kind == "album")
+    total = db.scalar(select(func.count(Item.id)).where(mine))
+    artists = db.scalar(select(func.count(func.distinct(func.lower(Item.creator)))).where(mine, Item.creator != ""))
+    tagged = db.scalar(select(func.count(Item.id)).where(mine, Item.vibes.any()))
+    ymin, ymax = db.execute(select(func.min(Item.year), func.max(Item.year)).where(mine)).one()
+
+    counts = dict(db.execute(
+        select(Vibe.id, func.count(Item.id)).join(Item.vibes).where(mine).group_by(Vibe.id)
+    ).all())
+    vibe_counts = sorted(((v, counts.get(v.id, 0)) for v in _user_vibes(db, user)), key=lambda vc: -vc[1])
+    genre_counts = db.execute(
+        select(Genre.name, func.count(Item.id)).join(Item.genres).where(mine)
+        .group_by(Genre.name).order_by(func.count(Item.id).desc(), Genre.name).limit(10)
+    ).all()
+    artist_counts = db.execute(
+        select(func.min(Item.creator), func.count(Item.id)).where(mine, Item.creator != "")
+        .group_by(func.lower(Item.creator)).order_by(func.count(Item.id).desc(), func.min(Item.creator)).limit(10)
+    ).all()
+    by_decade = dict(db.execute(
+        select((Item.year // 10) * 10, func.count(Item.id)).where(mine, Item.year.is_not(None)).group_by(Item.year // 10)
+    ).all())
+    decades = [(d, by_decade.get(d, 0)) for d in range(ymin // 10 * 10, ymax + 1, 10)] if ymin else []
+    return render(
+        request, "stats.html", user=user, total=total, artists=artists, tagged=tagged, years=(ymin, ymax),
+        genre_total=db.scalar(select(func.count(func.distinct(item_genres.c.genre_id))).join(Item).where(mine)),
+        vibe_counts=vibe_counts, genre_counts=genre_counts, artist_counts=artist_counts, decades=decades,
+    )
+
+
 # ---------- genres ----------
 # Genre names are shared between users, so renaming/merging/deleting only re-tags this user's albums.
 

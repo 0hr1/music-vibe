@@ -466,3 +466,46 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
 
 .manage-link { display: inline-block; margin-top: 6px; font-size: 12px; color: var(--muted); }
 .genre-help { margin-top: 0; }
+
+/* ---------- stats ---------- */
+
+.stats-page { display: flex; flex-direction: column; gap: 16px; max-width: 1100px; margin: 0 auto; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+.chart-note { margin: 10px 0 0; font-size: 12px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.tile { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; background: var(--field); box-shadow: var(--sunken); min-width: 0; }
+.tile-value { font-size: 26px; font-weight: bold; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tile.hero .tile-value { font-size: 48px; }
+.tile-label { font-size: 12px; color: var(--muted); }
+.meter { display: block; height: 10px; margin-top: 6px; background: var(--face-light); box-shadow: inset 1px 1px var(--shadow); }
+
+/* Win98 progress-bar blocks: one hue, 2px gaps between segments */
+.meter-fill, .hbar-fill { display: block; height: 100%;
+  background: repeating-linear-gradient(90deg, var(--select) 0 8px, transparent 8px 10px); }
+
+.hbars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.hbar { display: grid; grid-template-columns: minmax(0, 9em) minmax(0, 1fr) 2.5em; align-items: center; gap: 10px;
+  padding: 4px; color: var(--text); text-decoration: none; }
+.hbar:hover, .hbar:focus-visible { background: var(--face-light); outline: 1px dotted var(--select); outline-offset: -1px; }
+.hbar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.hbar-label .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+.hbar-track { height: 14px; background: var(--field); box-shadow: inset 1px 1px var(--shadow), inset -1px -1px var(--hi); padding: 2px; }
+.hbar-value { text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
+
+.columns { display: flex; align-items: stretch; gap: 2px; height: 220px; padding: 0 4px;
+  background: var(--field); box-shadow: var(--sunken); overflow-x: auto; }
+.column { position: relative; flex: 1 0 44px; display: flex; flex-direction: column; color: var(--text); text-decoration: none; padding-top: 22px; }
+.column-plot { position: relative; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+  border-bottom: 1px solid var(--shadow); }
+.column-fill { display: block; width: min(36px, 70%); min-height: 2px;
+  background: repeating-linear-gradient(0deg, var(--select) 0 8px, transparent 8px 10px); }
+.column-peak { font-size: 12px; font-weight: bold; margin-bottom: 2px; }
+.column-label { font-size: 12px; text-align: center; padding: 4px 0; color: var(--muted); }
+.column:hover, .column:focus-visible { background: var(--face-light); outline: none; }
+.column:hover .column-fill, .column:focus-visible .column-fill { filter: brightness(1.35); }
+.column[data-tip]:hover::after, .column[data-tip]:focus-visible::after {
+  content: attr(data-tip); position: absolute; top: 0; left: 50%; transform: translateX(-50%); z-index: 3;
+  padding: 2px 6px; white-space: nowrap; font-size: 12px; background: var(--tooltip); border: 1px solid var(--dark);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);
+}
