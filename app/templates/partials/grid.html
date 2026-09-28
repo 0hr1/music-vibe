@@ -1,8 +1,11 @@
-{% if total %}<div class="status-bar"><span>{{ albums|length }} of {{ total }} album{{ '' if total == 1 else 's' }}</span></div>{% endif %}
+{% if total %}<div class="status-bar"><span>{{ albums|length }} of {{ total }} album{{ '' if total == 1 else 's' }}</span>
+  {%- if message %}<span class="status-message" role="status">{{ message }}</span>{% endif %}</div>{% endif %}
 {% if albums %}
 <div class="grid">
   {% for a in albums %}
   <article class="card">
+    <input class="select-box" type="checkbox" name="sel" value="{{ a.id }}" aria-label="Select {{ a.title }}"
+           {% if selected and a.id in selected %}checked{% endif %}>
     <a class="cover" href="/albums/{{ a.id }}" title="Edit {{ a.title }}">
       {% if a.cover_file %}<img src="/covers/{{ a.cover_file }}" alt="" loading="lazy">
       {% else %}<span class="no-cover" aria-hidden="true">💿</span>{% endif %}

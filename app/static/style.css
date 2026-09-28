@@ -436,3 +436,28 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
 .import-search input { flex: 1; min-width: 0; }
 .import-row.htmx-request { opacity: 0.5; }
 .done-item { display: flex; align-items: center; gap: 10px; padding: 4px; }
+
+/* ---------- selecting albums (bulk edit) ---------- */
+
+.card { position: relative; }
+.select-box { display: none; }
+.library.selecting .select-box {
+  display: block; position: absolute; top: 10px; left: 10px; z-index: 2;
+  width: 22px; height: 22px; box-shadow: 1px 1px 0 var(--dark); cursor: pointer;
+}
+.library.selecting .card { cursor: pointer; }
+.library.selecting .card:has(.select-box:checked) { outline: 3px solid var(--select); outline-offset: 1px; }
+.library.selecting .card a { pointer-events: none; }
+.status-message { margin-left: 12px; font-weight: bold; }
+
+.bulk-bar { display: none; }
+.library.selecting .bulk-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  position: fixed; z-index: 35; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--taskbar-h) + env(safe-area-inset-bottom) + 10px);
+  width: max-content; max-width: calc(100vw - 20px); padding: 8px;
+}
+.library.selecting .albums { padding-bottom: 72px; }
+.bulk-bar select { width: auto; max-width: 160px; }
+.bulk-count { padding: 0 6px; font-size: 13px; }
+.bulk-bar .btn:disabled { color: var(--shadow); cursor: default; }

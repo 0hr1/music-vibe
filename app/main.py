@@ -156,26 +156,7 @@ def library(
     db: Session = Depends(get_db),
 ):
     ymin, ymax = _int_or_none(year_min), _int_or_none(year_max)
-    stmt = (
-        select(Item)
-        .where(Item.user_id == user.id, Item.kind == "album")
-        .options(selectinload(Item.vibes), selectinload(Item.genres))
-    )
-    if q.strip():
-        like = f"%{q.strip()}%"
-        stmt = stmt.where(Item.title.ilike(like) | Item.creator.ilike(like))
-    for vid in vibe:  # must match ALL selected vibes
-        stmt = stmt.where(Item.vibes.any(Vibe.id == vid))
-    if genre:  # match ANY selected genre
-        stmt = stmt.where(Item.genres.any(Genre.name.in_(genre)))
-    if ymin is not None:
-        stmt = stmt.where(Item.year >= ymin)
-    if ymax is not None:
-        stmt = stmt.where(Item.year <= ymax)
-    col = SORTS.get(sort, Item.created_at)
-    col = col.asc() if order == "asc" else col.desc()
-    stmt = stmt.order_by(col.nulls_last(), Item.id.desc())
-    albums = db.scalars(stmt).all()
+    albums = _filtered_albums(db, user, q, vibe, genre, ymin, ymax, sort, order)
 
     ctx = dict(albums=albums, total=_album_count(db, user))
     # htmx filter updates only need the grid (but a history restore needs the full page)
@@ -196,6 +177,73 @@ def library(
         f=dict(q=q, vibe=vibe, genre=genre, year_min=ymin, year_max=ymax, sort=sort, order=order),
         **ctx,
     )
+
+
+def _filtered_albums(db: Session, user: User, q: str, vibe: list[int], genre: list[str],
+                     ymin: int | None, ymax: int | None, sort: str, order: str) -> list[Item]:
+    stmt = (
+        select(Item)
+        .where(Item.user_id == user.id, Item.kind == "album")
+        .options(selectinload(Item.vibes), selectinload(Item.genres))
+    )
+    if q.strip():
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(Item.title.ilike(like) | Item.creator.ilike(like))
+    for vid in vibe:  # must match ALL selected vibes
+        stmt = stmt.where(Item.vibes.any(Vibe.id == vid))
+    if genre:  # match ANY selected genre
+        stmt = stmt.where(Item.genres.any(Genre.name.in_(genre)))
+    if ymin is not None:
+        stmt = stmt.where(Item.year >= ymin)
+    if ymax is not None:
+        stmt = stmt.where(Item.year <= ymax)
+    col = SORTS.get(sort, Item.created_at)
+    col = col.asc() if order == "asc" else col.desc()
+    stmt = stmt.order_by(col.nulls_last(), Item.id.desc())
+    return db.scalars(stmt).all()
+
+
+@app.post("/albums/bulk", response_class=HTMLResponse)
+async def bulk_edit(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Add/remove a vibe on, or delete, the selected albums; returns the grid re-rendered with the
+    library's current filters (sent along from the filter form)."""
+    form = await request.form()
+    ids = {int(i) for i in form.getlist("sel") if i.isdigit()}
+    items = db.scalars(select(Item).where(Item.user_id == user.id, Item.id.in_(ids))
+                       .options(selectinload(Item.vibes))).all()
+    action, message = form.get("action"), None
+    if action == "delete":
+        files = [item.cover_file for item in items]
+        for item in items:
+            db.delete(item)
+        db.commit()
+        for name in files:
+            covers.delete(name)
+        ids, message = set(), f"Deleted {len(items)} album{'' if len(items) == 1 else 's'}."
+    elif action in ("add_vibe", "remove_vibe"):
+        vibe = db.get(Vibe, _int_or_none(form.get("bulk_vibe")) or 0)
+        if not vibe or vibe.user_id != user.id:
+            raise HTTPException(400)
+        changed = 0
+        for item in items:
+            if action == "add_vibe" and vibe not in item.vibes:
+                item.vibes.append(vibe)
+                changed += 1
+            elif action == "remove_vibe" and vibe in item.vibes:
+                item.vibes.remove(vibe)
+                changed += 1
+        db.commit()
+        verb = "Added “{}” to" if action == "add_vibe" else "Removed “{}” from"
+        message = f"{verb.format(vibe.name)} {changed} album{'' if changed == 1 else 's'}."
+    else:
+        raise HTTPException(400)
+    albums = _filtered_albums(
+        db, user, form.get("q", ""), [int(v) for v in form.getlist("vibe") if v.isdigit()], form.getlist("genre"),
+        _int_or_none(form.get("year_min")), _int_or_none(form.get("year_max")),
+        form.get("sort", "added"), form.get("order", "desc"),
+    )
+    return render(request, "partials/grid.html", albums=albums, total=_album_count(db, user),
+                  selected=ids, message=message)
 
 
 def _album_count(db: Session, user: User) -> int:
