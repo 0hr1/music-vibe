@@ -18,6 +18,7 @@
       <a class="task {% if request.url.path == '/' %}active{% endif %}" href="/">Library</a>
       <a class="task {% if request.url.path == '/albums/new' %}active{% endif %}" href="/albums/new">+ Add</a>
       <a class="task {% if request.url.path == '/vibes' %}active{% endif %}" href="/vibes">Vibes</a>
+      <a class="task {% if request.url.path == '/stats' %}active{% endif %}" href="/stats">Stats</a>
     </nav>
     <div class="tray">
       <span class="tray-user">{{ user.username }}</span>
