@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import backup, covers, deezer, importer, invites, musicbrainz, spotify
+from . import backup, covers, deezer, importer, invites, musicbrainz, ratelimit, spotify
 from .auth import LoginRequired, admin_user, current_user, hash_password, is_admin, verify_password
 from .config import ALLOW_SIGNUP, COVERS_DIR, HTTPS_ONLY, SECRET_KEY, SESSION_MAX_AGE
 from .db import Base, engine, get_db
@@ -81,6 +81,14 @@ def redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url, status_code=303)
 
 
+TOO_MANY = "Too many attempts. Wait a few minutes and try again."
+
+
+def client_ip(request: Request) -> str:
+    """The visitor's address (uvicorn takes it from the proxy's X-Forwarded-For)."""
+    return f"ip:{request.client.host if request.client else '?'}"
+
+
 def signup_open(db: Session) -> bool:
     """Open sign-up needs no invite code: when ALLOW_SIGNUP is on, or for the very first account."""
     return ALLOW_SIGNUP or db.scalar(select(func.count(User.id))) == 0
@@ -96,10 +104,16 @@ def login_page(request: Request, db: Session = Depends(get_db)):
 
 @app.post("/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    keys = (client_ip(request), f"user:{username.strip().lower()}")
+    if ratelimit.login_by_ip.blocked(keys[0]) or ratelimit.login_by_user.blocked(keys[1]):
+        return render(request, "login.html", 429, error=TOO_MANY, username=username, needs_code=not signup_open(db))
     user = db.scalar(select(User).where(func.lower(User.username) == username.strip().lower()))
     if not user or not verify_password(password, user.password_hash):
+        ratelimit.login_by_ip.hit(keys[0])
+        ratelimit.login_by_user.hit(keys[1])
         return render(request, "login.html", 401, error="Wrong username or password.",
                       username=username, needs_code=not signup_open(db))
+    ratelimit.login_by_user.reset(keys[1])
     request.session.clear()
     request.session["user_id"] = user.id
     return redirect("/")
@@ -120,6 +134,10 @@ def register(
     db: Session = Depends(get_db),
 ):
     needs_code = not signup_open(db)
+    if ratelimit.signup_by_ip.blocked(client_ip(request)):
+        return render(request, "register.html", 429, error=TOO_MANY, username=username, needs_code=needs_code,
+                      code=invites.normalize(code))
+    ratelimit.signup_by_ip.hit(client_ip(request))
     invite = invites.find_usable(db, code) if needs_code else None
     username = username.strip()
     if not re.fullmatch(r"[A-Za-z0-9_.-]{2,32}", username):
@@ -174,7 +192,11 @@ def change_password(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
-    if not verify_password(current, user.password_hash):
+    key = f"user:{user.username.lower()}"
+    if ratelimit.login_by_user.blocked(key):
+        error = TOO_MANY
+    elif not verify_password(current, user.password_hash):
+        ratelimit.login_by_user.hit(key)
         error = "Current password is wrong."
     else:
         error = _password_problem(password, password2)
