@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "macros.html" import window %}
+{% block title %}Account · music vibe{% endblock %}
+{% block content %}
+<div class="page">
+  {% call window("Change Password", "🔑", cls="dialog account-window") %}
+  <form method="post" action="/account/password" class="stack">
+    <p class="dialog-intro"><span class="big-icon" aria-hidden="true">👤</span>Logged on as <b>{{ user.username }}</b>.</p>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    {% if saved %}<p class="notice">Password changed.</p>{% endif %}
+    <label class="field"><span>Current password:</span>
+      <input name="current" type="password" autocomplete="current-password" required></label>
+    <label class="field"><span>New password:</span>
+      <input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+    <label class="field"><span>Confirm:</span>
+      <input name="password2" type="password" autocomplete="new-password" minlength="8" required></label>
+    <div class="button-row"><button class="btn primary" type="submit">Change password</button></div>
+  </form>
+  {% endcall %}
+</div>
+{% endblock %}

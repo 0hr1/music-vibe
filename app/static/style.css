@@ -128,6 +128,8 @@ small { font-size: 0.85em; }
 }
 .tray form { margin: 0; }
 .tray-btn { min-height: 26px; padding: 2px 8px; font-size: 12px; }
+.tray-user { display: flex; align-items: center; gap: 4px; color: inherit; text-decoration: none; font-size: 13px; }
+.tray-user:hover .tray-name, .tray-user.active .tray-name { text-decoration: underline; }
 
 /* ---------- controls ---------- */
 
@@ -393,7 +395,7 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
   .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
   .album-fields { grid-template-columns: minmax(0, 1fr); }
   .cover-field { max-width: 260px; }
-  .tray-user, .start-label { display: none; }
+  .tray-name, .start-label { display: none; }
   .tray { padding: 2px; box-shadow: none; }
   .task, .start-btn { padding: 4px 9px; }
 
@@ -510,3 +512,4 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
   box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);
 }
 .export-link { margin: 12px 0 0; font-size: 12px; text-align: right; }
+.account-window { align-self: center; }

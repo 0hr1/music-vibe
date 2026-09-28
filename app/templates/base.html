@@ -21,7 +21,7 @@
       <a class="task {% if request.url.path == '/stats' %}active{% endif %}" href="/stats">Stats</a>
     </nav>
     <div class="tray">
-      <span class="tray-user">{{ user.username }}</span>
+      <a class="tray-user {% if request.url.path == '/account' %}active{% endif %}" href="/account" title="Account"><span aria-hidden="true">👤</span><span class="tray-name">{{ user.username }}</span></a>
       <form method="post" action="/logout"><button class="tray-btn" type="submit">Log out</button></form>
     </div>
   </header>
