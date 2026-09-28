@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
@@ -16,7 +16,7 @@ from . import covers, deezer, importer, musicbrainz, spotify
 from .auth import LoginRequired, current_user, hash_password, verify_password
 from .config import ALLOW_SIGNUP, COVERS_DIR, HTTPS_ONLY, SECRET_KEY, SESSION_MAX_AGE
 from .db import Base, engine, get_db
-from .models import Genre, Item, User, Vibe
+from .models import Genre, Item, User, Vibe, item_genres
 
 HERE = Path(__file__).resolve().parent
 
@@ -264,20 +264,25 @@ def _get_album(db: Session, user: User, album_id: int) -> Item:
     return item
 
 
+def _genre_name(raw: str) -> str:
+    return " ".join(raw.strip().lower().split())[:100]
+
+
+def _get_or_create_genre(db: Session, name: str) -> Genre:
+    g = db.scalar(select(Genre).where(Genre.name == name))
+    if not g:
+        g = Genre(name=name)
+        db.add(g)
+    return g
+
+
 def _parse_genres(db: Session, raw: str) -> list[Genre]:
     names = []
     for part in raw.split(","):
-        name = " ".join(part.strip().lower().split())[:100]
+        name = _genre_name(part)
         if name and name not in names:
             names.append(name)
-    genres = []
-    for name in names:
-        g = db.scalar(select(Genre).where(Genre.name == name))
-        if not g:
-            g = Genre(name=name)
-            db.add(g)
-        genres.append(g)
-    return genres
+    return [_get_or_create_genre(db, name) for name in names]
 
 
 def _clean_url(url: str) -> str | None:
@@ -511,6 +516,59 @@ def delete_album(album_id: int, user: User = Depends(current_user), db: Session 
     db.delete(item)
     db.commit()
     return redirect("/")
+
+
+# ---------- genres ----------
+# Genre names are shared between users, so renaming/merging/deleting only re-tags this user's albums.
+
+
+@app.get("/genres", response_class=HTMLResponse)
+def genres_page(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rows = db.execute(
+        select(Genre, func.count(Item.id)).join(Item.genres).where(Item.user_id == user.id)
+        .group_by(Genre.id).order_by(Genre.name)
+    ).all()
+    groups: dict[str, list] = {}
+    for genre, count in rows:  # "hip hop" / "hip-hop" / "Hip Hop" look like the same genre
+        groups.setdefault(importer.norm(genre.name), []).append((genre, count))
+    duplicates = [g for g in groups.values() if len(g) > 1]
+    return render(request, "genres.html", user=user, rows=rows, duplicates=duplicates)
+
+
+def _retag(db: Session, user: User, source_ids: set[int], target: Genre | None) -> None:
+    """Replace the source genres with `target` (or just remove them) on this user's albums."""
+    source_ids.discard(target.id if target and target.id else -1)
+    items = db.scalars(
+        select(Item).where(Item.user_id == user.id, Item.genres.any(Genre.id.in_(source_ids)))
+        .options(selectinload(Item.genres))
+    ).all()
+    for item in items:
+        item.genres = [g for g in item.genres if g.id not in source_ids]
+        if target and target not in item.genres:
+            item.genres.append(target)
+    db.flush()
+    db.execute(delete(Genre).where(Genre.id.not_in(select(item_genres.c.genre_id))))  # unused by anyone
+    db.commit()
+
+
+def _user_genre_ids(db: Session, user: User, ids: list[int]) -> set[int]:
+    return set(db.scalars(select(Genre.id).join(Item.genres).where(Item.user_id == user.id, Genre.id.in_(ids))))
+
+
+@app.post("/genres/merge")
+def merge_genres(genre: list[int] = Form(default=[]), name: str = Form(...), user: User = Depends(current_user),
+                 db: Session = Depends(get_db)):
+    """Rename one genre, or merge several: all become `name` (which may be an existing genre)."""
+    name = _genre_name(name)
+    if name:
+        _retag(db, user, _user_genre_ids(db, user, genre), _get_or_create_genre(db, name))
+    return redirect("/genres")
+
+
+@app.post("/genres/{genre_id}/delete")
+def delete_genre(genre_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _retag(db, user, _user_genre_ids(db, user, [genre_id]), None)
+    return redirect("/genres")
 
 
 # ---------- vibes ----------

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "macros.html" import window %}
+{% block title %}Genres · music vibe{% endblock %}
+{% block content %}
+<div class="page">
+  {% if duplicates %}
+  {% call window("Possible Duplicates", "🔀") %}
+  <ul class="vibe-list">
+    {% for group in duplicates %}
+    <li>
+      <form method="post" action="/genres/merge" class="row wrap">
+        {% for g, count in group %}<input type="hidden" name="genre" value="{{ g.id }}">{% endfor %}
+        <span class="grow">{% for g, count in group %}<b>{{ g.name }}</b> <span class="muted">({{ count }})</span>{% if not loop.last %}, {% endif %}{% endfor %}</span>
+        <label class="row"><span class="muted">into</span>
+          <select name="name" aria-label="Merge into">
+            {% for g, count in group|sort(attribute="1", reverse=true) %}<option>{{ g.name }}</option>{% endfor %}
+          </select></label>
+        <button class="btn" type="submit">Merge</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endcall %}
+  {% endif %}
+
+  {% call window("Manage Genres", "🏷️") %}
+  <p class="muted genre-help">Rename a genre to fix it everywhere in your library. Renaming it to a genre you
+    already have merges the two. Deleting removes it from your albums (the albums stay).</p>
+  {% if rows %}
+  <ul class="vibe-list">
+    {% for g, count in rows %}
+    <li>
+      <form method="post" action="/genres/merge" class="row wrap">
+        <input type="hidden" name="genre" value="{{ g.id }}">
+        <input name="name" value="{{ g.name }}" maxlength="100" required class="grow" aria-label="Genre name">
+        <a class="muted count" href="/?genre={{ g.name|urlencode }}">{{ count }} album{{ '' if count == 1 else 's' }}</a>
+        <button class="btn" type="submit">Rename</button>
+        <button class="btn danger" type="submit" formaction="/genres/{{ g.id }}/delete"
+                onclick="return confirm('Remove this genre from all your albums?')">Delete</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No genres yet. They come with the albums you add.</p>
+  {% endif %}
+  <div class="button-row"><a class="btn" href="/">Back to library</a></div>
+  {% endcall %}
+</div>
+{% endblock %}

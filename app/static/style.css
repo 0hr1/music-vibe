@@ -461,3 +461,8 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
 .bulk-bar select { width: auto; max-width: 160px; }
 .bulk-count { padding: 0 6px; font-size: 13px; }
 .bulk-bar .btn:disabled { color: var(--shadow); cursor: default; }
+
+/* ---------- genres ---------- */
+
+.manage-link { display: inline-block; margin-top: 6px; font-size: 12px; color: var(--muted); }
+.genre-help { margin-top: 0; }
