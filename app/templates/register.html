@@ -7,6 +7,11 @@
   <form method="post" action="/register" class="stack">
     <p class="dialog-intro"><span class="big-icon" aria-hidden="true">💿</span>Create your music vibe account.</p>
     {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    {% if needs_code %}
+    <label class="field"><span>Invite code:</span>
+      <input name="code" value="{{ code or '' }}" autocomplete="off" autocapitalize="characters" spellcheck="false"
+             placeholder="XXXX-XXXX-XXXX" required></label>
+    {% endif %}
     <label class="field"><span>User name:</span>
       <input name="username" value="{{ username or '' }}" autocomplete="username" autocapitalize="none" required autofocus></label>
     <label class="field"><span>Password:</span>

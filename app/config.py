@@ -13,6 +13,8 @@ DB_PATH = DATA_DIR / "music_vibe.db"
 BACKUPS_DIR = DATA_DIR / "backups"
 
 ALLOW_SIGNUP = _bool("ALLOW_SIGNUP", False)
+# Who can manage invite codes and users (comma-separated). Empty: the first account.
+ADMIN_USERNAMES = {n.strip().lower() for n in os.environ.get("ADMIN_USERNAMES", "").split(",") if n.strip()}
 HTTPS_ONLY = _bool("HTTPS_ONLY", False)
 MB_CONTACT = os.environ.get("MB_CONTACT", "").strip() or "no-contact-configured"
 USER_AGENT = f"music-vibe/0.1 ( {MB_CONTACT} )"

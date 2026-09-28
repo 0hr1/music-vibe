@@ -16,6 +16,7 @@
       <input name="password2" type="password" autocomplete="new-password" minlength="8" required></label>
     <div class="button-row"><button class="btn primary" type="submit">Change password</button></div>
   </form>
+  {% if admin %}<p class="export-link"><a href="/admin">Invite codes &amp; users…</a></p>{% endif %}
   {% endcall %}
 </div>
 {% endblock %}

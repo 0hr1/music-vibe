@@ -12,7 +12,7 @@
     <label class="field"><span>Password:</span>
       <input name="password" type="password" autocomplete="current-password" required></label>
     <div class="button-row">
-      {% if signup_open %}<a class="btn" href="/register">Create account</a>{% endif %}
+      <a class="btn" href="/register">{{ "Have an invite code?" if needs_code else "Create account" }}</a>
       <button class="btn primary" type="submit">OK</button>
     </div>
   </form>

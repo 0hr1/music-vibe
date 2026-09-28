@@ -513,3 +513,8 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
 }
 .export-link { margin: 12px 0 0; font-size: 12px; text-align: right; }
 .account-window { align-self: center; }
+.narrow-num { width: 72px; }
+code.secret { font-family: ui-monospace, monospace; background: var(--field); padding: 2px 6px; box-shadow: var(--sunken); user-select: all; }
+.invite-meta { font-size: 13px; }
+.invite-link { width: 100%; margin-top: 4px; font-size: 12px; }
+.invite.spent { opacity: 0.6; }

@@ -72,3 +72,32 @@ class Genre(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), unique=True)
+
+
+class InviteCode(Base):
+    """Lets someone create an account while sign-up is closed. `max_uses` None means unlimited."""
+
+    __tablename__ = "invite_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True)
+    note: Mapped[str] = mapped_column(String(200), default="")
+    max_uses: Mapped[int | None] = mapped_column(Integer)
+    uses: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    def expired(self, now: datetime | None = None) -> bool:
+        return self.expires_at is not None and _aware(self.expires_at) <= (now or _now())
+
+    def used_up(self) -> bool:
+        return self.max_uses is not None and self.uses >= self.max_uses
+
+    def usable(self) -> bool:
+        return not self.expired() and not self.used_up()
+
+
+def _aware(dt: datetime) -> datetime:
+    """SQLite hands datetimes back without a timezone; they're stored as UTC."""
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
