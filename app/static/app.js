@@ -114,22 +114,31 @@ document.addEventListener("submit", (e) => {
     });
   });
 
-  // Came here from another card? Then Back can simply go back in the browser's history.
-  const fromCard = (() => {
-    try {
-      const from = new URL(document.referrer);
-      return from.origin === location.origin && /^\/triage\/\d+$/.test(from.pathname);
-    } catch { return false; }
-  })();
-  if (fromCard) document.querySelectorAll("[data-history]").forEach((link) => (link.hidden = false));
+  // Going through albums without vibes, the ones you tag leave the list, so Back follows the trail of
+  // cards seen in this tab instead. It starts afresh whenever you arrive from outside triage.
+  const TRAIL = "triage-trail";
+  const readTrail = () => { try { return JSON.parse(sessionStorage.getItem(TRAIL)) || []; } catch { return []; } };
+  const writeTrail = (t) => { try { sessionStorage.setItem(TRAIL, JSON.stringify(t.slice(-200))); } catch {} };
+  const backLink = document.querySelector("[data-history]");
+  if (backLink) {
+    const here = location.pathname;
+    let trail = readTrail();
+    let fromCard = false;
+    try { fromCard = /^\/triage\/\d+$/.test(new URL(document.referrer).pathname); } catch {}
+    if (!fromCard) trail = [];
+    if (trail.at(-2) === here) trail.pop();  // came back
+    else if (trail.at(-1) !== here) trail.push(here);  // (the last one is a reload)
+    writeTrail(trail);
+    if (trail.length > 1) {
+      backLink.href = trail.at(-2);
+      backLink.hidden = false;
+    }
+  }
 
   const go = (dir) => {
     const link = document.querySelector(`[data-triage-nav="${dir}"]:not([hidden])`);
     if (!link) return;
-    const leave = () => {
-      if (link.dataset.history !== undefined && fromCard) history.back();
-      else location.href = link.href;
-    };
+    const leave = () => { location.href = link.href; };
     if (saving.size) waiting.push(leave); else leave();
   };
 
@@ -222,7 +231,9 @@ document.addEventListener("submit", (e) => {
 
   document.addEventListener("submit", (e) => {
     const title = e.target.dataset?.confirmRemove;
-    if (title !== undefined && !confirm(`Remove “${title}” from your library? This can't be undone.`)) e.preventDefault();
+    if (title === undefined) return;
+    if (!confirm(`Remove “${title}” from your library? This can't be undone.`)) e.preventDefault();
+    else writeTrail(readTrail().filter((p) => p !== location.pathname));  // or Back would lead to it
   });
 
   // Coming back with the browser's back button shows a cached page; reload it so vibes are current

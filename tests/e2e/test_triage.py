@@ -274,3 +274,82 @@ def test_finish_later_from_the_library(logged_in, make_album, make_vibe):
     expect(page.get_by_text("Every album has vibes.")).to_be_visible()
     page.get_by_role("link", name="Go to library").click()
     expect(page.get_by_role("link", name=re.compile("untagged"))).to_have_count(0)
+
+
+def _untagged_cards(make_album, *titles):
+    return [make_album(t, genres_checked=True) for t in titles]
+
+
+def _heading(page, name):
+    return page.get_by_role("heading", name=name, exact=True)
+
+
+def test_back_after_removing_an_album(logged_in, make_album):
+    _untagged_cards(make_album, "A", "B", "C")
+    page = logged_in
+    page.goto("/")
+    page.get_by_role("link", name="🏷 Tag 3 untagged").click()
+    expect(_heading(page, "A")).to_be_visible()
+    page.keyboard.press("ArrowRight")
+    expect(_heading(page, "B")).to_be_visible()
+    page.once("dialog", lambda d: d.dismiss())  # changed my mind: B stays, and so does the trail
+    page.get_by_role("button", name="Remove from library").click()
+    page.once("dialog", lambda d: d.accept())
+    page.get_by_role("button", name="Remove from library").click()
+    expect(_heading(page, "C")).to_be_visible()
+    page.keyboard.press("ArrowLeft")  # skips the removed B
+    expect(_heading(page, "A")).to_be_visible()
+    expect(page.get_by_role("link", name="← Back")).to_be_hidden()  # A was the first card
+
+
+def test_browser_back_button_keeps_the_trail(logged_in, make_album):
+    _untagged_cards(make_album, "A", "B", "C")
+    page = logged_in
+    page.goto("/")
+    page.get_by_role("link", name="🏷 Tag 3 untagged").click()
+    expect(_heading(page, "A")).to_be_visible()
+    page.keyboard.press("ArrowRight")
+    expect(_heading(page, "B")).to_be_visible()
+    page.keyboard.press("ArrowRight")
+    expect(_heading(page, "C")).to_be_visible()
+    page.go_back()  # the browser's own button
+    expect(_heading(page, "B")).to_be_visible()
+    page.keyboard.press("ArrowLeft")
+    expect(_heading(page, "A")).to_be_visible()
+
+
+def test_starting_again_from_the_library_starts_a_new_trail(logged_in, make_album, make_vibe):
+    _untagged_cards(make_album, "A", "B")
+    page = logged_in
+    page.goto("/")
+    page.get_by_role("link", name="🏷 Tag 2 untagged").click()
+    _vibe(page, "fall").click()
+    page.keyboard.press("ArrowRight")
+    expect(_heading(page, "B")).to_be_visible()
+    page.get_by_role("link", name="Library").click()
+    page.get_by_role("link", name="🏷 Tag 1 untagged").click()
+    expect(_heading(page, "B")).to_be_visible()
+    expect(page.get_by_role("link", name="← Back")).to_be_hidden()  # not back into the last session
+
+
+def test_back_after_removing_in_a_batch(logged_in, make_album):
+    a, b, c = _untagged_cards(make_album, "A", "B", "C")
+    page = logged_in
+    page.goto(f"/triage/{b.id}?batch={a.id}-{c.id}")
+    page.once("dialog", lambda d: d.accept())
+    page.get_by_role("button", name="Remove from library").click()
+    expect(_heading(page, "C")).to_be_visible()
+    expect(page.locator(".triage-progress")).to_contain_text("Album 2 of 2")
+    page.keyboard.press("ArrowLeft")
+    expect(_heading(page, "A")).to_be_visible()
+
+
+def test_new_vibe_counts_the_album_as_tagged(logged_in, make_album):
+    _untagged_cards(make_album, "A", "B")
+    page = logged_in
+    page.goto("/triage")
+    left = page.locator("[data-left]")
+    expect(left).to_have_text("2")
+    _new_vibe(page)
+    expect(_vibe(page, "late night")).to_be_checked()
+    expect(left).to_have_text("1")

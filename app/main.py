@@ -439,10 +439,9 @@ def library(
         .order_by(func.count().desc(), Genre.name)
     ).all()
     years = db.execute(select(func.min(Item.year), func.max(Item.year)).where(Item.user_id == user.id)).one()
-    untagged = db.scalar(select(func.count(Item.id)).where(Item.user_id == user.id, Item.kind == "album",
-                                                          ~Item.vibes.any()))
     return render(
-        request, "library.html", user=user, vibes=vibes, genres=genres, years=years, untagged=untagged,
+        request, "library.html", user=user, vibes=vibes, genres=genres, years=years,
+        untagged=_untagged_count(db, user),
         f=dict(q=q, vibe=vibe, genre=genre, year_min=ymin, year_max=ymax, sort=sort, order=order),
         **ctx,
     )
@@ -512,11 +511,16 @@ async def bulk_edit(request: Request, user: User = Depends(current_user), db: Se
         form.get("sort", "added"), form.get("order", "desc"),
     )
     return render(request, "partials/grid.html", albums=albums, total=_album_count(db, user),
-                  selected=ids, message=message)
+                  selected=ids, message=message, oob_untagged=_untagged_count(db, user))
 
 
 def _album_count(db: Session, user: User) -> int:
     return db.scalar(select(func.count(Item.id)).where(Item.user_id == user.id, Item.kind == "album"))
+
+
+def _untagged_count(db: Session, user: User) -> int:
+    return db.scalar(select(func.count(Item.id)).where(Item.user_id == user.id, Item.kind == "album",
+                                                       ~Item.vibes.any()))
 
 
 # ---------- albums ----------
@@ -777,7 +781,7 @@ def triage_card(request: Request, album_id: int, batch: str = "", user: User = D
     if not album or album.user_id != user.id:  # e.g. removed, then reached with the browser's back button
         return redirect(_triage_url(getattr(_neighbour(db, user, span, album_id, after=True), "id", None), span))
     upcoming = _neighbour(db, user, span, album.id, after=True)
-    earlier = _neighbour(db, user, span, album.id, after=False)
+    earlier = _neighbour(db, user, span, album.id, after=False) if span else None  # else app.js knows
     mine, others = _in_triage(user, span), Item.id != album.id
     if span:  # the card itself is counted live, as its vibes are ticked
         progress = dict(position=_count(db, *mine, Item.id <= album.id), total=_count(db, *mine),

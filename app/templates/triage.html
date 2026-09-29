@@ -49,10 +49,9 @@
   </article>
 
   <div class="triage-nav">
-    {#- Without a batch, Back goes back in the browser's history (albums you tagged have left the list),
-    so it's shown by app.js when you came from another card. -#}
-    {% if prev_url or not span %}<a class="btn" href="{{ prev_url or '/triage' }}" data-triage-nav="prev"
-      {%- if not span %} data-history{% endif %}{% if not prev_url %} hidden{% endif %}>← Back</a>{% endif %}
+    {#- Without a batch, albums you tag leave the list, so app.js points Back at the card you saw before. -#}
+    {% if span %}{% if prev_url %}<a class="btn" href="{{ prev_url }}" data-triage-nav="prev">← Back</a>{% endif %}
+    {% else %}<a class="btn" href="/triage" data-triage-nav="prev" data-history hidden>← Back</a>{% endif %}
     <form method="post" action="/triage/{{ album.id }}/delete" data-confirm-remove="{{ album.title }}">
       <input type="hidden" name="batch" value="{{ batch }}">
       <button class="btn danger" type="submit">Remove<span class="not-mobile"> from library</span></button>

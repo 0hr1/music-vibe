@@ -95,10 +95,11 @@ def test_other_users_albums_are_never_shown(client, make_album, db):
 
 def test_library_offers_to_tag_albums_without_vibes(client, make_album, make_vibe):
     make_album("A", vibes=[make_vibe("winter")])
-    assert "untagged" not in client.get("/").text
+    assert 'id="tag-untagged" href="/triage" hidden' in client.get("/").text
     make_album("B")
     make_album("C")
-    assert "Tag 2 untagged" in client.get("/").text
+    r = client.get("/")
+    assert "Tag 2 untagged" in r.text and r.text.count('id="tag-untagged"') == 1
 
 
 def test_set_vibes(client, make_album, make_vibe, db):

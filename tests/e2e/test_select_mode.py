@@ -60,3 +60,24 @@ def test_library_fits_a_phone(logged_in, make_album):
     page.goto("/")
     expect(page.get_by_role("link", name="+ Add album")).to_be_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")  # no sideways scrolling
+
+
+def test_bulk_edits_update_the_untagged_button(logged_in, make_album, make_vibe):
+    make_vibe("winter")
+    for title in ("One", "Two"):
+        make_album(title)
+    page = logged_in
+    page.goto("/")
+    button = page.get_by_role("link", name=re.compile("untagged"))
+    expect(button).to_have_text("🏷 Tag 2 untagged")
+    page.click("[data-select-mode][aria-pressed]")
+    page.click(".card:has-text('One')")
+    page.select_option("select[name=bulk_vibe]", label="winter")
+    page.get_by_role("button", name="+ Add vibe").click()
+    expect(button).to_have_text("🏷 Tag 1 untagged")
+    page.click("[data-select-all]")
+    page.get_by_role("button", name="+ Add vibe").click()
+    expect(button).to_be_hidden()
+    page.click("[data-select-all]")
+    page.get_by_role("button", name="− Remove vibe").click()
+    expect(button).to_have_text("🏷 Tag 2 untagged")
