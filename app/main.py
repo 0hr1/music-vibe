@@ -17,16 +17,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import backup, covers, deezer, importer, invites, musicbrainz, ratelimit, spotify
+from . import backup, covers, deezer, importer, invites, migrations, musicbrainz, ratelimit, spotify
 from .auth import (LoginRequired, admin_user, admins_named, check_login, current_user, hash_password, is_admin,
                    is_reserved_admin_name, log_in, verify_password)
 from .config import ALLOW_SIGNUP, COVERS_DIR, HTTPS_ONLY, ON_FLY, SECRET_KEY, SESSION_MAX_AGE
-from .db import Base, engine, get_db
+from .db import engine, get_db
 from .models import Genre, InviteCode, Item, User, Vibe, item_genres
 
 HERE = Path(__file__).resolve().parent
 
-Base.metadata.create_all(engine)
+migrations.upgrade(engine)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -43,6 +43,38 @@ app.add_middleware(
     same_site="lax",
     https_only=HTTPS_ONLY,
 )
+
+
+MAX_BODY = covers.MAX_BYTES + 2 * 1024 * 1024  # a cover upload plus the rest of the form
+
+
+class BodyLimit:
+    """Refuses request bodies over MAX_BODY. Form parsing saves uploads to temp files before any
+    route code (even the login check) runs, so without this anyone could fill the disk."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        length = dict(scope["headers"]).get(b"content-length", b"0")
+        if not length.isdigit() or int(length) > MAX_BODY:
+            return await Response("Request too large.", 413, media_type="text/plain")(scope, receive, send)
+        received = 0
+
+        async def counted():  # for bodies sent without a Content-Length
+            nonlocal received
+            message = await receive()
+            received += len(message.get("body", b""))
+            if received > MAX_BODY:
+                raise HTTPException(413, "Request too large.")
+            return message
+
+        await self.app(scope, counted, send)
+
+
+app.add_middleware(BodyLimit)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 app.mount("/covers", StaticFiles(directory=COVERS_DIR), name="covers")
 
@@ -209,7 +241,11 @@ def register(
         return _register_form(request, db, 400, code=code, error=error, username=username)
     user = User(username=username, password_hash=hash_password(password))
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:  # someone took the name (in any capitalization) a moment ago
+        db.rollback()
+        return _register_form(request, db, 400, code=code, error="That username is taken.", username=username)
     log_in(request, user)
     return redirect("/vibes?welcome=1")
 
@@ -329,7 +365,19 @@ def delete_user(user_id: int, admin: User = Depends(admin_user), db: Session = D
 
 
 def _int_or_none(value: str | None) -> int | None:
-    return int(value) if value and value.strip().lstrip("-").isdigit() else None
+    """Up to 9 digits; anything bigger is nonsense here and overflows SQLite's integers."""
+    value = (value or "").strip()
+    return int(value) if value.lstrip("-").isdigit() and len(value.lstrip("-")) <= 9 else None
+
+
+YEARS = range(1000, 2101)
+
+
+def _year(value: str | int | None) -> int | None:
+    """A plausible release year, or None. Stats draws one bar per decade in between, so the range
+    must stay small."""
+    year = _int_or_none(value) if isinstance(value, str) else value
+    return year if year in YEARS else None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -543,9 +591,9 @@ async def refine_album(request: Request, title: str, artist: str = "", year: str
         found = await musicbrainz.find_details(title, artist)
     except httpx.HTTPError:
         found = {}
-    v_year = _int_or_none(year)
-    if found.get("year") and (v_year is None or found["year"] < v_year):
-        v_year = found["year"]
+    v_year, found_year = _year(year), _year(found.get("year"))
+    if found_year and (v_year is None or found_year < v_year):
+        v_year = found_year
     v_genres = ", ".join(found["genres"]) if found.get("genres") else genres
     return render(request, "partials/year_genres.html", v_year=v_year, v_genres=v_genres)
 
@@ -612,7 +660,7 @@ async def import_add(request: Request, user: User = Depends(current_user), db: S
             failed += 1
             continue
         item = Item(user_id=user.id, kind="album", title=info["title"][:500] or "Untitled",
-                    creator=info["artist"][:500], year=info["year"], external_id=info["external_id"],
+                    creator=info["artist"][:500], year=_year(info["year"]), external_id=info["external_id"],
                     cover_file=info["cover_file"], spotify_url=info["spotify_url"])
         item.genres = _parse_genres(db, ", ".join(info["genres"]))
         db.add(item)
@@ -642,7 +690,7 @@ async def create_album(
         kind="album",
         title=title.strip()[:500] or "Untitled",
         creator=creator.strip()[:500],
-        year=_int_or_none(year),
+        year=_year(year),
         spotify_url=_clean_url(spotify_url),
         notes=notes.strip() or None,
         external_id=external_id.strip() or None,
@@ -683,7 +731,7 @@ async def update_album(
     item = _get_album(db, user, album_id)
     item.title = title.strip()[:500] or "Untitled"
     item.creator = creator.strip()[:500]
-    item.year = _int_or_none(year)
+    item.year = _year(year)
     item.spotify_url = _clean_url(spotify_url)
     item.notes = notes.strip() or None
     item.genres = _parse_genres(db, genres)
@@ -734,7 +782,8 @@ def stats_page(request: Request, user: User = Depends(current_user), db: Session
     by_decade = dict(db.execute(
         select((Item.year // 10) * 10, func.count(Item.id)).where(mine, Item.year.is_not(None)).group_by(Item.year // 10)
     ).all())
-    decades = [(d, by_decade.get(d, 0)) for d in range(ymin // 10 * 10, ymax + 1, 10)] if ymin else []
+    decades = ([(d, by_decade.get(d, 0)) for d in range(ymin // 10 * 10, ymax + 1, 10)]
+               if ymin is not None and ymax - ymin <= len(YEARS) else [])
     return render(
         request, "stats.html", user=user, total=total, artists=artists, tagged=tagged, years=(ymin, ymax),
         genre_total=db.scalar(select(func.count(func.distinct(item_genres.c.genre_id))).join(Item).where(mine)),
