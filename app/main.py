@@ -695,7 +695,151 @@ async def import_add(request: Request, user: User = Depends(current_user), db: S
         db.add(item)
         added.append(item)
     db.commit()
-    return render(request, "import_done.html", user=user, added=added, failed=failed)
+    return render(request, "import_done.html", user=user, added=added, failed=failed,
+                  triage_ids=",".join(str(item.id) for item in added))
+
+
+# ---------- triage: one album at a time, for tagging a fresh import ----------
+
+MAX_TRIAGE = 500
+_lookups: dict[int, asyncio.Task] = {}  # MusicBrainz lookups under way, by album id
+
+
+def _triage_ids(raw: str) -> list[int]:
+    ids = [int(part) for part in raw.split(",") if part.strip().isdigit()]
+    return list(dict.fromkeys(ids))[:MAX_TRIAGE]
+
+
+def _triage_url(ids: list[int], i: int) -> str:
+    return f"/triage?ids={','.join(map(str, ids))}&i={i}"
+
+
+@app.get("/triage", response_class=HTMLResponse)
+def triage_page(request: Request, ids: str = "", i: int = 0, user: User = Depends(current_user),
+                db: Session = Depends(get_db)):
+    """The album at position `i` of the batch. Albums deleted since drop out of the batch."""
+    wanted = _triage_ids(ids)
+    mine = {item.id: item for item in db.scalars(
+        select(Item).where(Item.user_id == user.id, Item.id.in_(wanted))
+        .options(selectinload(Item.vibes), selectinload(Item.genres)))}
+    batch = [n for n in wanted if n in mine]
+    i = max(0, min(i, len(batch)))
+    album = mine[batch[i]] if i < len(batch) else None
+    upcoming = mine[batch[i + 1]] if i + 1 < len(batch) else None
+    tagged = sum(1 for item in mine.values() if item.vibes and item is not album)  # the card counts itself live
+    return render(
+        request, "triage.html", user=user, album=album, i=i, total=len(batch), tagged=tagged,
+        vibes=(vibes := _user_vibes(db, user)), suggested_color=_unused_color(vibes), prev_url=_triage_url(batch, i - 1) if i else None,
+        next_url=_triage_url(batch, i + 1), ids=",".join(map(str, batch)),
+        prefetch=upcoming.id if upcoming and not upcoming.genres_checked else None,
+        known_genres=db.scalars(select(Genre.name).join(Item.genres).where(Item.user_id == user.id)
+                                .group_by(Genre.name).order_by(Genre.name)).all(),
+    )
+
+
+# Colours a vibe made on the fly gets, in order, skipping ones already in use
+VIBE_PALETTE = ["#e0563b", "#3bb58a", "#6b7fa3", "#d6a23b", "#b05cd6", "#3b8fe0", "#e05c9a", "#7cb342",
+                "#8d6e63", "#26a69a", "#5c6bc0", "#f4a261"]
+
+
+def _unused_color(vibes: list[Vibe]) -> str:
+    used = {v.color.lower() for v in vibes}
+    return next((c for c in VIBE_PALETTE if c not in used), VIBE_PALETTE[len(vibes) % len(VIBE_PALETTE)])
+
+
+@app.post("/triage/{album_id}/new-vibe", response_class=HTMLResponse)
+def triage_new_vibe(request: Request, album_id: int, name: str = Form(""), color: str = Form(""),
+                    vibes: list[int] = Form(default=[]), user: User = Depends(current_user),
+                    db: Session = Depends(get_db)):
+    """Make a vibe (or find the one by that name) and tick it on this album, along with the vibes
+    already ticked on the card."""
+    item = _get_album(db, user, album_id)
+    name, color = _vibe_values(name, color)
+    ticked = db.scalars(select(Vibe).where(Vibe.user_id == user.id, Vibe.id.in_(vibes))).all()
+    if name:
+        vibe = db.scalar(select(Vibe).where(Vibe.user_id == user.id, func.lower(Vibe.name) == name.lower()))
+        if not vibe:
+            vibe = Vibe(user_id=user.id, name=name, color=color)
+            db.add(vibe)
+        ticked = [*ticked, vibe] if vibe not in ticked else ticked
+    item.vibes = ticked
+    db.commit()
+    all_vibes = _user_vibes(db, user)
+    return render(request, "partials/triage_vibes.html", album=item, vibes=all_vibes,
+                  suggested_color=_unused_color(all_vibes))
+
+
+def _genre_chips(request: Request, item: Item, **ctx):
+    return render(request, "partials/triage_genres.html", album=item, **ctx)
+
+
+@app.post("/triage/{album_id}/vibes")
+def triage_vibes(album_id: int, vibes: list[int] = Form(default=[]), user: User = Depends(current_user),
+                 db: Session = Depends(get_db)):
+    item = _get_album(db, user, album_id)
+    item.vibes = db.scalars(select(Vibe).where(Vibe.user_id == user.id, Vibe.id.in_(vibes))).all()
+    db.commit()
+    return Response(status_code=204)
+
+
+@app.post("/triage/{album_id}/genres", response_class=HTMLResponse)
+def triage_genres(request: Request, album_id: int, add: str = Form(""), remove: str = Form(""),
+                  user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Add genres (comma separated) to, or remove one from, a single album."""
+    item = _get_album(db, user, album_id)
+    names = [g.name for g in item.genres if g.name != _genre_name(remove)]
+    item.genres = _parse_genres(db, ", ".join(names + [add]))
+    item.genres_checked = True
+    db.commit()
+    return _genre_chips(request, item)
+
+
+async def _look_up(item_id: int, title: str, artist: str) -> dict:
+    """One MusicBrainz lookup per album at a time: the card and the prefetch for it can share it."""
+    if item_id not in _lookups:
+        _lookups[item_id] = asyncio.create_task(musicbrainz.find_details(title, artist))
+        _lookups[item_id].add_done_callback(lambda _t: _lookups.pop(item_id, None))
+    return await asyncio.shield(_lookups[item_id])
+
+
+@app.post("/triage/{album_id}/refine", response_class=HTMLResponse)
+async def triage_refine(request: Request, album_id: int, user: User = Depends(current_user),
+                        db: Session = Depends(get_db)):
+    """Swap in MusicBrainz's genres and original year, unless the genres were already checked or got
+    edited while MusicBrainz was answering."""
+    item = _get_album(db, user, album_id)
+    if item.genres_checked:
+        return _genre_chips(request, item)
+    try:
+        found = await _look_up(item.id, item.title, item.creator)
+    except httpx.HTTPError:
+        return _genre_chips(request, item, note="MusicBrainz didn't answer, so these are Deezer's genres.")
+    db.expire_all()
+    item = db.get(Item, album_id)
+    if item is None:  # removed from the library meanwhile
+        return HTMLResponse("")
+    if item.genres_checked:
+        return _genre_chips(request, item)
+    if found.get("genres"):
+        item.genres = _parse_genres(db, ", ".join(found["genres"]))
+    year = _year(found.get("year"))
+    if year and (item.year is None or year < item.year):
+        item.year = year
+    item.genres_checked = True
+    db.commit()
+    return _genre_chips(request, item, year_changed=True,
+                        note="Genres from MusicBrainz." if found.get("genres") else None)
+
+
+@app.post("/triage/{album_id}/delete")
+def triage_delete(album_id: int, ids: str = Form(""), i: int = Form(0), user: User = Depends(current_user),
+                  db: Session = Depends(get_db)):
+    """Remove an album from the library and carry on with the batch (the next album moves up to `i`)."""
+    item = _get_album(db, user, album_id)
+    covers.delete(item.cover_file)
+    db.delete(item)
+    db.commit()
+    return redirect(_triage_url(_triage_ids(ids), i))
 
 
 @app.post("/albums")
@@ -725,6 +869,7 @@ async def create_album(
         external_id=external_id.strip() or None,
     )
     item.genres = _parse_genres(db, genres)
+    item.genres_checked = True
     item.vibes = db.scalars(select(Vibe).where(Vibe.user_id == user.id, Vibe.id.in_(vibes))).all()
     if cover and cover.filename:
         item.cover_file = covers.save_upload(await cover.read(covers.MAX_BYTES + 1), cover.content_type or "")
@@ -764,6 +909,7 @@ async def update_album(
     item.spotify_url = _clean_url(spotify_url)
     item.notes = notes.strip() or None
     item.genres = _parse_genres(db, genres)
+    item.genres_checked = True
     item.vibes = db.scalars(select(Vibe).where(Vibe.user_id == user.id, Vibe.id.in_(vibes))).all()
     if cover and cover.filename:
         if new := covers.save_upload(await cover.read(covers.MAX_BYTES + 1), cover.content_type or ""):

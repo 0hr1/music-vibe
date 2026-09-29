@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Table, Text, UniqueConstraint, func
+from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Table, Text, UniqueConstraint,
+                        func, text)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -51,6 +52,8 @@ class Item(Base):
     spotify_url: Mapped[str | None] = mapped_column(String(500))
     external_id: Mapped[str | None] = mapped_column(String(64))  # MusicBrainz release-group id
     notes: Mapped[str | None] = mapped_column(Text)
+    # Genres were looked up on MusicBrainz or set by hand, so triage mustn't replace them with a lookup
+    genres_checked: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     vibes: Mapped[list["Vibe"]] = relationship(secondary=item_vibes, order_by="Vibe.name")
