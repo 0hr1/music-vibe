@@ -79,6 +79,7 @@
   <form id="bulk-form" class="bulk-bar window" hx-post="/albums/bulk" hx-target="#grid" hx-include="#filter-form, #grid">
     <span class="bulk-count"><b data-bulk-count>0</b> selected</span>
     <button class="btn" type="button" data-select-all>All</button>
+    <button class="btn" type="button" data-select-none data-needs-selection>None</button>
     {% if vibes %}
     <select name="bulk_vibe" aria-label="Vibe">
       {% for v in vibes %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}
