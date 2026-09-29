@@ -1,5 +1,7 @@
 import asyncio
 import csv
+import functools
+import hashlib
 import io
 import re
 import secrets
@@ -75,7 +77,31 @@ class BodyLimit:
 
 
 app.add_middleware(BodyLimit)
-app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
+
+
+class VersionedStatic(StaticFiles):
+    """A file asked for with ?v=<hash of its contents> (see static_url) never changes at that URL, so
+    browsers may keep it for a year; a deploy that changes the file changes the URL."""
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if scope.get("query_string", b"").startswith(b"v=") and response.status_code == 200:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
+@functools.cache
+def _digest(path: Path, mtime_ns: int) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+
+
+def static_url(name: str) -> str:
+    """URL of a file in app/static that changes whenever the file does."""
+    path = HERE / "static" / name
+    return f"/static/{name}?v={_digest(path, path.stat().st_mtime_ns)}"
+
+
+app.mount("/static", VersionedStatic(directory=HERE / "static"), name="static")
 app.mount("/covers", StaticFiles(directory=COVERS_DIR), name="covers")
 
 templates = Jinja2Templates(directory=HERE / "templates")
@@ -121,6 +147,7 @@ def text_on(color: str) -> str:
 
 templates.env.filters["text_on"] = text_on
 templates.env.globals["spotify_enabled"] = spotify.enabled
+templates.env.globals["static_url"] = static_url
 
 
 @app.exception_handler(LoginRequired)
