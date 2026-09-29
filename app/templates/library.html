@@ -83,7 +83,7 @@ typed, so Back showed a filtered grid under an empty filter form. Back refetches
     <a class="btn" href="/albums/new">+ Add album</a>
   </div>
   <form id="bulk-form" class="bulk-bar window" hx-post="/albums/bulk" hx-target="#grid" hx-include="#filter-form, #grid">
-    <span class="bulk-count"><b data-bulk-count>0</b> selected</span>
+    <span class="bulk-count"><b data-bulk-count>0</b> selected<span data-bulk-offscreen hidden></span></span>
     <button class="btn" type="button" data-select-all>All</button>
     <button class="btn" type="button" data-select-none data-needs-selection>None</button>
     {% if vibes %}

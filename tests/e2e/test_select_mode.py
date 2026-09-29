@@ -81,3 +81,62 @@ def test_bulk_edits_update_the_untagged_button(logged_in, make_album, make_vibe)
     page.click("[data-select-all]")
     page.get_by_role("button", name="− Remove vibe").click()
     expect(button).to_have_text("🏷 Tag 2 untagged")
+
+
+def test_selection_outlasts_filter_changes(logged_in, make_album, make_vibe, db):
+    """Select some albums, search for others and select those too: a bulk edit covers them all."""
+    make_vibe("winter")
+    for title in ("Alpha", "Beta", "Gamma"):
+        make_album(title)
+    page = logged_in
+    page.goto("/")
+    count = page.locator("[data-bulk-count]")
+    search = page.get_by_role("searchbox")
+
+    page.click("[data-select-mode][aria-pressed]")
+    page.click(".card:has-text('Alpha')")
+    search.fill("Beta")
+    expect(page.locator(".card")).to_have_count(1)
+    expect(count).to_have_text("1")
+    expect(page.locator(".bulk-count")).to_contain_text("(1 not shown)")
+    page.click(".card:has-text('Beta')")
+    expect(count).to_have_text("2")
+
+    page.select_option("select[name=bulk_vibe]", label="winter")
+    page.get_by_role("button", name="+ Add vibe").click()
+    expect(page.locator(".status-message")).to_have_text("Added “winter” to 2 albums.")
+
+    search.fill("")
+    expect(page.locator(".card")).to_have_count(3)
+    expect(page.locator(".select-box:checked")).to_have_count(2)
+    expect(page.locator(".card:has-text('Alpha') .chip")).to_have_text("winter")
+    expect(page.locator(".card:has-text('Gamma') .chip")).to_have_count(0)
+
+    # None clears albums out of view too; leaving select mode forgets the selection
+    search.fill("Gamma")
+    expect(page.locator(".card")).to_have_count(1)
+    page.click("[data-select-none]")
+    expect(count).to_have_text("0")
+    page.click(".card:has-text('Gamma')")
+    page.get_by_role("button", name="Done").click()
+    page.click("[data-select-mode][aria-pressed]")
+    expect(count).to_have_text("0")
+
+
+def test_bulk_delete_clears_the_selection(logged_in, make_album):
+    for title in ("Alpha", "Beta", "Gamma"):
+        make_album(title)
+    page = logged_in
+    page.goto("/")
+    page.on("dialog", lambda d: d.accept())
+    page.click("[data-select-mode][aria-pressed]")
+    page.click(".card:has-text('Alpha')")
+    page.get_by_role("searchbox").fill("Beta")
+    expect(page.locator(".card")).to_have_count(1)
+    page.click(".card:has-text('Beta')")
+    page.get_by_role("button", name="Delete").click()
+    expect(page.locator(".status-message")).to_have_text("Deleted 2 albums.")
+    expect(page.locator("[data-bulk-count]")).to_have_text("0")
+    page.get_by_role("searchbox").fill("")
+    expect(page.locator(".card")).to_have_count(1)
+    expect(page.locator(".card")).to_contain_text("Gamma")

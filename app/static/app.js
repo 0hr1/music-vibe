@@ -59,12 +59,34 @@ document.addEventListener("keydown", (e) => {
   e.target.parentElement.querySelector("button")?.click();
 });
 
-// Library select mode (bulk edit): toggle cards, keep the count and buttons in sync
+// Library select mode (bulk edit): toggle cards, keep the count and buttons in sync. The selection
+// lives here rather than in the checkboxes, so it outlasts the grid being redrawn by a filter change;
+// albums selected but filtered out of view ride along as hidden inputs.
+const selection = new Set();
+let deleting = false;
+
 function syncSelection() {
-  const boxes = [...document.querySelectorAll("#grid .select-box")];
-  const n = boxes.filter((b) => b.checked).length;
-  document.querySelectorAll("[data-bulk-count]").forEach((el) => (el.textContent = n));
-  document.querySelectorAll("[data-needs-selection]").forEach((b) => (b.disabled = n === 0));
+  if (!document.querySelector(".library.selecting")) selection.clear();
+  const shown = new Set();
+  document.querySelectorAll("#grid .select-box").forEach((b) => {
+    shown.add(b.value);
+    b.checked = selection.has(b.value);
+  });
+  const offscreen = [...selection].filter((id) => !shown.has(id));
+  const grid = document.getElementById("grid");
+  if (grid) {  // in the grid, which the bulk form sends: htmx lets its `sel` values replace the form's own
+    let box = grid.querySelector("[data-offscreen-selection]");
+    if (!box) box = grid.appendChild(Object.assign(document.createElement("div"), { hidden: true }));
+    box.dataset.offscreenSelection = "";
+    box.replaceChildren(...offscreen.map((id) => Object.assign(document.createElement("input"),
+      { type: "hidden", name: "sel", value: id })));
+  }
+  document.querySelectorAll("[data-bulk-count]").forEach((el) => (el.textContent = selection.size));
+  document.querySelectorAll("[data-bulk-offscreen]").forEach((el) => {
+    el.hidden = !offscreen.length;
+    el.textContent = ` (${offscreen.length} not shown)`;
+  });
+  document.querySelectorAll("[data-needs-selection]").forEach((b) => (b.disabled = !selection.size));
 }
 
 document.addEventListener("click", (e) => {
@@ -73,36 +95,47 @@ document.addEventListener("click", (e) => {
   if (e.target.closest("[data-select-mode]")) {
     const on = library.classList.toggle("selecting");
     document.querySelectorAll("[data-select-mode][aria-pressed]").forEach((b) => b.setAttribute("aria-pressed", on));
-    if (!on) document.querySelectorAll("#grid .select-box").forEach((b) => (b.checked = false));
     syncSelection();
-  } else if (e.target.closest("[data-select-all], [data-select-none]")) {
-    const on = !!e.target.closest("[data-select-all]");
-    document.querySelectorAll("#grid .select-box").forEach((b) => (b.checked = on));
+  } else if (e.target.closest("[data-select-all]")) {
+    document.querySelectorAll("#grid .select-box").forEach((b) => selection.add(b.value));
+    syncSelection();
+  } else if (e.target.closest("[data-select-none]")) {
+    selection.clear();
     syncSelection();
   } else if (library.classList.contains("selecting")) {
     const card = e.target.closest("#grid .card");
     if (!card) return;
+    const box = card.querySelector(".select-box");
     if (!e.target.matches(".select-box")) {
       e.preventDefault();
-      const box = card.querySelector(".select-box");
       box.checked = !box.checked;
     }
+    if (box.checked) selection.add(box.value); else selection.delete(box.value);
     syncSelection();
   }
 });
 
 document.addEventListener("htmx:afterSwap", (e) => {
-  if (e.detail.target.id === "grid") syncSelection();
+  if (e.detail.target.id !== "grid") return;
+  if (deleting) selection.clear();  // they're gone
+  deleting = false;
+  syncSelection();
 });
+document.addEventListener("htmx:afterRequest", (e) => {
+  if (e.detail.elt?.id === "bulk-form" && !e.detail.successful) deleting = false;
+});
+document.addEventListener("htmx:historyRestore", syncSelection);
 syncSelection();
 
 // Deleting many albums deserves a confirm (capture phase: runs before htmx sees the submit)
 document.addEventListener("submit", (e) => {
   if (e.submitter?.value !== "delete" || e.target.id !== "bulk-form") return;
-  const n = document.querySelectorAll("#grid .select-box:checked").length;
+  const n = selection.size;
   if (!confirm(`Delete ${n} album${n === 1 ? "" : "s"} from your library? This can't be undone.`)) {
     e.preventDefault();
     e.stopImmediatePropagation();
+  } else {
+    deleting = true;
   }
 }, true);
 
