@@ -261,6 +261,10 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
 }
 .filters { position: sticky; top: 16px; max-height: calc(100vh - var(--taskbar-h) - 32px); overflow: auto; }
 .filters-backdrop { display: none; }
+/* Random order: Shuffle deals a new order; sort-by doesn't apply */
+.filters .shuffle { display: none; }
+.filters .group:has(option[value=random]:checked) .shuffle { display: block; width: 100%; margin-top: 8px; }
+.filters .row:has(option[value=random]:checked) select[name=sort] { opacity: .5; }
 .genre-list { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow: auto; padding: 6px; background: var(--field); box-shadow: var(--sunken); }
 .genre-list .check { font-size: 13px; }
 

@@ -3,6 +3,7 @@ import csv
 import functools
 import hashlib
 import io
+import random
 import re
 import secrets
 from contextlib import asynccontextmanager
@@ -419,11 +420,12 @@ def library(
     year_max: str | None = None,
     sort: str = "added",
     order: str = "desc",
+    seed: str | None = None,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
     ymin, ymax = _int_or_none(year_min), _int_or_none(year_max)
-    albums = _filtered_albums(db, user, q, vibe, genre, ymin, ymax, sort, order)
+    albums = _filtered_albums(db, user, q, vibe, genre, ymin, ymax, sort, order, _int_or_none(seed))
 
     ctx = dict(albums=albums, total=_album_count(db, user))
     # htmx filter updates only need the grid (but a history restore needs the full page)
@@ -441,13 +443,14 @@ def library(
     years = db.execute(select(func.min(Item.year), func.max(Item.year)).where(Item.user_id == user.id)).one()
     return render(
         request, "library.html", user=user, vibes=vibes, genres=genres, years=years,
-        f=dict(q=q, vibe=vibe, genre=genre, year_min=ymin, year_max=ymax, sort=sort, order=order),
+        f=dict(q=q, vibe=vibe, genre=genre, year_min=ymin, year_max=ymax, sort=sort, order=order, seed=seed or ""),
         **ctx,
     )
 
 
 def _filtered_albums(db: Session, user: User, q: str, vibe: list[int], genre: list[str],
-                     ymin: int | None, ymax: int | None, sort: str, order: str) -> list[Item]:
+                     ymin: int | None, ymax: int | None, sort: str, order: str,
+                     seed: int | None = None) -> list[Item]:
     stmt = (
         select(Item)
         .where(Item.user_id == user.id, Item.kind == "album")
@@ -464,6 +467,12 @@ def _filtered_albums(db: Session, user: User, q: str, vibe: list[int], genre: li
         stmt = stmt.where(Item.year >= ymin)
     if ymax is not None:
         stmt = stmt.where(Item.year <= ymax)
+    if order == "random":
+        # Shuffled by a seed kept in the URL, so re-rendering the grid (after a bulk edit, a refresh
+        # or going back) keeps the same order until the user shuffles again
+        albums = list(db.scalars(stmt.order_by(Item.id)).all())
+        random.Random(seed).shuffle(albums)
+        return albums
     col = SORTS.get(sort, Item.created_at)
     col = col.asc() if order == "asc" else col.desc()
     stmt = stmt.order_by(col.nulls_last(), Item.id.desc())
@@ -507,7 +516,7 @@ async def bulk_edit(request: Request, user: User = Depends(current_user), db: Se
     albums = _filtered_albums(
         db, user, form.get("q", ""), [int(v) for v in form.getlist("vibe") if v.isdigit()], form.getlist("genre"),
         _int_or_none(form.get("year_min")), _int_or_none(form.get("year_max")),
-        form.get("sort", "added"), form.get("order", "desc"),
+        form.get("sort", "added"), form.get("order", "desc"), _int_or_none(form.get("seed")),
     )
     return render(request, "partials/grid.html", albums=albums, total=_album_count(db, user),
                   selected=ids, message=message)
