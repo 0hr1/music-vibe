@@ -242,12 +242,14 @@ def register(
     user = User(username=username, password_hash=hash_password(password))
     db.add(user)
     try:
+        db.flush()
+        db.add_all(Vibe(user_id=user.id, name=name, color=color) for name, color in STARTER_VIBES)
         db.commit()
     except IntegrityError:  # someone took the name (in any capitalization) a moment ago
         db.rollback()
         return _register_form(request, db, 400, code=code, error="That username is taken.", username=username)
     log_in(request, user)
-    return redirect("/vibes?welcome=1")
+    return redirect("/")
 
 
 def _password_problem(password: str, password2: str) -> str | None:
@@ -866,16 +868,19 @@ def delete_genre(genre_id: int, user: User = Depends(current_user), db: Session 
 
 # ---------- vibes ----------
 
+# Every new account starts with these.
+STARTER_VIBES = [("winter", "#9ec9ff"), ("spring", "#9be39b"), ("summer", "#ffd24a"), ("fall", "#d9822b")]
+
 
 @app.get("/vibes", response_class=HTMLResponse)
-def vibes_page(request: Request, welcome: bool = False, user: User = Depends(current_user),
+def vibes_page(request: Request, user: User = Depends(current_user),
                db: Session = Depends(get_db)):
     counts = dict(
         db.execute(
             select(Vibe.id, func.count(Item.id)).join(Item.vibes).where(Vibe.user_id == user.id).group_by(Vibe.id)
         ).all()
     )
-    return render(request, "vibes.html", user=user, vibes=_user_vibes(db, user), counts=counts, welcome=welcome)
+    return render(request, "vibes.html", user=user, vibes=_user_vibes(db, user), counts=counts)
 
 
 def _vibe_values(name: str, color: str) -> tuple[str, str]:

@@ -58,8 +58,11 @@ def make_album(db, user):
 @pytest.fixture
 def make_vibe(db, user):
     def make(name, color="#8a5cd6"):
-        vibe = Vibe(user_id=user.id, name=name, color=color)
-        db.add(vibe)
-        db.commit()
+        # New accounts already have the season vibes, so reuse one by that name.
+        vibe = db.query(Vibe).filter_by(user_id=user.id, name=name).one_or_none()
+        if not vibe:
+            vibe = Vibe(user_id=user.id, name=name, color=color)
+            db.add(vibe)
+            db.commit()
         return vibe
     return make

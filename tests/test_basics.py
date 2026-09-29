@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.models import Vibe
 
 
 def test_login_required():
@@ -43,3 +44,9 @@ def test_oversized_cover_upload_is_dropped(client, db):
     big = b"\xff\xd8" + b"0" * (covers.MAX_BYTES + 10)
     client.post("/albums", data={"title": "Huge"}, files={"cover": ("c.jpg", big, "image/jpeg")})
     assert db.query(Item).filter_by(title="Huge").one().cover_file is None
+
+
+def test_new_account_lands_on_library_with_season_vibes(db):
+    r = TestClient(app).post("/register", data={"username": "new", "password": "password1", "password2": "password1"})
+    assert r.url.path == "/" and "Your library is empty" in r.text
+    assert [v.name for v in db.query(Vibe).order_by(Vibe.id)] == ["winter", "spring", "summer", "fall"]

@@ -71,7 +71,7 @@ def test_with_admin_usernames_only_that_name_skips_the_code(monkeypatch):
     r = _register(c, "stranger")
     assert r.status_code == 400 and "invite code" in r.text
     r = _register(c, "Ori")
-    assert r.status_code == 200 and "Welcome" in r.text
+    assert r.status_code == 200 and "Your library is empty" in r.text
     assert c.get("/admin").status_code == 200
 
 

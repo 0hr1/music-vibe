@@ -17,7 +17,7 @@ def _register(c, name, code=None):
 
 def test_first_account_needs_no_code():
     r = _register(TestClient(app), "first")
-    assert r.status_code == 200 and "Welcome" in r.text
+    assert r.status_code == 200 and "Your library is empty" in r.text
 
 
 def test_later_accounts_need_a_valid_code(client, db):
@@ -29,7 +29,7 @@ def test_later_accounts_need_a_valid_code(client, db):
     assert r.status_code == 400
     invite = invites.create(db, max_uses=1)
     r = _register(c, "friend", invite.code.lower().replace("-", " "))  # typed sloppily still works
-    assert r.status_code == 200 and "Welcome" in r.text
+    assert r.status_code == 200 and "Your library is empty" in r.text
     r = _register(TestClient(app), "second", invite.code)
     assert r.status_code == 400 and "used up" in r.text
     db.expire_all()
