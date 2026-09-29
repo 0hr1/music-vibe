@@ -16,6 +16,14 @@
   loop running that breaks later `asyncio.run()` tests.
 - The user works over SSH, so Claude in Chrome can't reach their browser; use Playwright.
 
+## Changing the database layout
+
+A deploy upgrades the live database in place, on startup. Any change to a table in `app/models.py`
+needs a matching step appended to `STEPS` in `app/migrations.py` (never edit or reorder old steps), then
+`.venv/bin/python tests/schemas/save_schema.py` to save the new layout. `tests/test_schema_upgrades.py`
+upgrades every saved layout and checks it matches a fresh database; if it fails, fix the step or model
+(e.g. a NOT NULL column added by ALTER TABLE needs a `server_default` in the model too), not the test.
+
 ## Running
 
 - `./run.sh [port]` for a local dev server; `HOST=tailscale ./run.sh` to reach it from the tailnet.
