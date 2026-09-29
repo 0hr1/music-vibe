@@ -122,6 +122,10 @@ async def _security_headers(request: Request, call_next):
     response = await call_next(request)
     for name, value in SECURITY_HEADERS.items():
         response.headers.setdefault(name, value)
+    if response.headers.get("content-type", "").startswith("text/html"):
+        # Pages show the library as it is now: Back mustn't bring up a stale copy from the browser's
+        # cache (e.g. albums just tagged still showing as untagged), nor show them after logging out
+        response.headers.setdefault("Cache-Control", "no-store")
     return response
 
 
@@ -797,7 +801,7 @@ def triage_card(request: Request, album_id: int, batch: str = "", user: User = D
                         tagged_others=_count(db, *mine, others, Item.vibes.any()))
     else:
         progress = dict(left_others=_count(db, *mine, others))
-    response = render(
+    return render(
         request, "triage.html", user=user, album=album, span=span, batch=batch if span else "",
         vibes=(vibes := _user_vibes(db, user)), suggested_color=_unused_color(vibes),
         prev_url=_triage_url(earlier.id, span) if earlier else None,
@@ -805,8 +809,6 @@ def triage_card(request: Request, album_id: int, batch: str = "", user: User = D
         last=upcoming is None, prefetch=upcoming.id if upcoming and not upcoming.genres_checked else None,
         known_genres=_known_genres(db, user), **progress,
     )
-    response.headers["Cache-Control"] = "no-store"  # Back must show the vibes as saved, not a cached copy
-    return response
 
 
 # Colours a vibe made on the fly gets, in order, skipping ones already in use

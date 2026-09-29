@@ -353,3 +353,20 @@ def test_new_vibe_counts_the_album_as_tagged(logged_in, make_album):
     _new_vibe(page)
     expect(_vibe(page, "late night")).to_be_checked()
     expect(left).to_have_text("1")
+
+
+def test_browser_back_to_the_library_shows_the_new_vibes(logged_in, make_album):
+    """The browser mustn't show the library from its cache after tagging: it would still offer the
+    album as untagged."""
+    _untagged_cards(make_album, "A", "B")
+    page = logged_in
+    page.goto("/")
+    page.get_by_role("link", name="🏷 Tag 2 untagged").click()
+    expect(_heading(page, "A")).to_be_visible()
+    _vibe(page, "fall").click()
+    expect(page.locator("[data-left]")).to_have_text("1")
+    page.wait_for_load_state("networkidle")  # the save is in
+
+    page.go_back()
+    expect(page.get_by_role("link", name="🏷 Tag 1 untagged")).to_be_visible()
+    expect(page.locator(".card:has-text('A') .chip")).to_have_text("fall")
