@@ -12,9 +12,9 @@ import secrets
 
 from sqlalchemy import func, select
 
-from . import invites
+from . import invites, migrations
 from .auth import hash_password
-from .db import Base, SessionLocal, engine
+from .db import SessionLocal, engine
 from .models import User
 
 
@@ -30,7 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     reset.add_argument("username")
     args = parser.parse_args(argv)
 
-    Base.metadata.create_all(engine)
+    migrations.upgrade(engine)
     with SessionLocal() as db:
         if args.cmd == "users":
             for u in db.scalars(select(User).order_by(User.id)):
