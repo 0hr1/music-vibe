@@ -2,7 +2,9 @@
 {% from "macros.html" import window %}
 {% block title %}Library · music vibe{% endblock %}
 {% block content %}
-<div class="library">
+{#- No htmx history snapshots here: a snapshot is the page's HTML, which doesn't hold what was ticked or
+typed, so Back showed a filtered grid under an empty filter form. Back refetches the page instead. -#}
+<div class="library" hx-history="false">
   <div class="filters-backdrop" data-close-filters></div>
   {% call window("Filters", "🔍", id="filters", cls="filters") %}
   <form hx-get="/" hx-target="#grid" hx-push-url="true" hx-indicator="#grid"
