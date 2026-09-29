@@ -18,7 +18,7 @@ document.addEventListener("htmx:beforeSwap", (e) => {
   const val = (name) => box.querySelector(`input[name=${name}]`)?.value ?? "";
   if (`${val("year")}|${val("genres")}` !== box.dataset.original) {
     e.detail.shouldSwap = false;
-    box.querySelector("small")?.remove();
+    box.querySelector("[data-lookup-note]")?.remove();
   }
 });
 
@@ -27,7 +27,7 @@ document.addEventListener("htmx:beforeSwap", (e) => {
   const box = e.detail.requestConfig?.elt;
   if (box?.matches?.("[data-spotify-auto]") && box.querySelector("input[name=spotify_url]").value.trim()) {
     e.detail.shouldSwap = false;
-    box.querySelector("small")?.remove();
+    box.querySelector("[data-lookup-note]")?.remove();
   }
 });
 
