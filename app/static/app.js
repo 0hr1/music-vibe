@@ -98,21 +98,24 @@ document.addEventListener("submit", (e) => {
 
 // Triage (tagging albums one at a time): keys, swipes, and never leaving a card before its edits are saved
 {
-  let saving = 0;
+  // Tracked by request, not element: when a save swaps out its own element (removing a genre),
+  // htmx reports the end of the request on an ancestor instead
+  const saving = new Set();
   let waiting = [];
-  const isSave = (e) => e.detail.elt?.closest?.("[data-save]");
-  document.addEventListener("htmx:beforeRequest", (e) => { if (isSave(e)) saving++; });
+  document.addEventListener("htmx:beforeRequest", (e) => {
+    if (e.detail.elt?.closest?.("[data-save]")) saving.add(e.detail.xhr);
+  });
   document.addEventListener("htmx:afterRequest", (e) => {
-    if (!isSave(e)) return;
-    saving = Math.max(0, saving - 1);
-    if (!saving) { waiting.forEach((go) => go()); waiting = []; }
+    if (!saving.delete(e.detail.xhr) || saving.size) return;
+    waiting.forEach((go) => go());
+    waiting = [];
   });
 
   const go = (dir) => {
     const link = document.querySelector(`[data-triage-nav="${dir}"]`);
     if (!link) return;
     const leave = () => { location.href = link.href; };
-    if (saving) waiting.push(leave); else leave();
+    if (saving.size) waiting.push(leave); else leave();
   };
 
   document.addEventListener("click", (e) => {

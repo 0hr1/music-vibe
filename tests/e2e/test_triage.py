@@ -94,8 +94,9 @@ def test_moving_on_waits_for_the_save(logged_in, make_album, db):
 
 def test_edit_genres(logged_in, make_album, db):
     a = make_album("Album", genres=["pop", "rock"], genres_checked=True)
+    b = make_album("After", genres_checked=True)
     page = logged_in
-    page.goto(f"/triage?ids={a.id}")
+    page.goto(f"/triage?ids={a.id},{b.id}")
     page.get_by_role("button", name="Remove pop").click()
     expect(page.locator(".genre-chip")).to_have_text(["rock×"])
     box = page.get_by_role("combobox", name="Add a genre")
@@ -106,6 +107,9 @@ def test_edit_genres(logged_in, make_album, db):
     expect(page.get_by_role("heading", name="Album")).to_be_visible()
     db.expire_all()
     assert [g.name for g in db.get(Item, a.id).genres] == ["krautrock", "rock"]
+    # removing a genre swaps out the button that saved it; that save must still count as finished
+    page.get_by_role("link", name="Next →").click()
+    expect(page.get_by_role("heading", name="After")).to_be_visible()
 
 
 def test_remove_from_library(logged_in, make_album, db):
