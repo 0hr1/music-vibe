@@ -72,6 +72,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ./run.sh [port]             # same, on localhost: makes the venv if missing, loads .env, allows plain http
 HOST=tailscale ./run.sh     # reachable from your tailnet (only) instead
+.venv/bin/playwright install chromium-headless-shell  # once: the browser for tests/e2e
 .venv/bin/pytest            # tests use a throwaway data dir and never touch the network
 ```
 
