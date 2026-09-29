@@ -462,6 +462,7 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
 .triage-nav form { margin: 0; }
 .triage-nav .btn.primary { min-width: 120px; }
 .triage-keys { margin: 10px 0 0; font-size: 12px; text-align: right; }
+.triage-progress { display: flex; justify-content: space-between; gap: 12px; }
 .triage-keys kbd { font: 11px ui-monospace, monospace; padding: 0 4px; background: var(--field); border: 1px solid var(--shadow); }
 
 @media (max-width: 800px) {

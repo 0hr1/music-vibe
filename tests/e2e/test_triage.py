@@ -44,7 +44,9 @@ def test_import_then_tag_with_keys(logged_in, db):
     page.get_by_role("link", name="Tag these 2 →").click()
 
     expect(page.get_by_role("heading", name="Loveless")).to_be_visible()
-    expect(page.locator(".triage-progress")).to_contain_text("1 of 2")
+    progress = page.locator(".triage-progress")
+    expect(progress).to_contain_text("Album 1 of 2")
+    expect(progress).to_contain_text("0 tagged · 2 left")
     # MusicBrainz replaces Deezer's "rock" and fixes the reissue year
     expect(page.locator(".genre-chip")).to_have_text(["dream pop×", "shoegaze×"])
     expect(page.locator("#triage-year")).to_have_text(" · 1991")
@@ -54,11 +56,16 @@ def test_import_then_tag_with_keys(logged_in, db):
     page.keyboard.press("4")
     expect(_vibe(page, "fall")).to_be_checked()
     expect(_vibe(page, "winter")).to_be_checked()
+    expect(progress).to_contain_text("1 tagged · 1 left")  # counts albums, not vibes
     page.keyboard.press("4")  # toggles back off
     expect(_vibe(page, "winter")).not_to_be_checked()
+    page.keyboard.press("1")
+    expect(progress).to_contain_text("0 tagged · 2 left")
+    page.keyboard.press("1")
     page.keyboard.press("ArrowRight")
 
     expect(page.get_by_role("heading", name="Kid A")).to_be_visible()
+    expect(progress).to_contain_text("1 tagged · 1 left")  # Loveless, saved before leaving
     expect(page.locator(".genre-chip")).to_have_text(["rock×"])  # no MusicBrainz genres: Deezer's stay
     expect(page.locator("#triage-genres")).not_to_contain_text("Checking MusicBrainz")
     page.keyboard.press("ArrowLeft")

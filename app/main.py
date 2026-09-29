@@ -726,7 +726,7 @@ def triage_page(request: Request, ids: str = "", i: int = 0, user: User = Depend
     i = max(0, min(i, len(batch)))
     album = mine[batch[i]] if i < len(batch) else None
     upcoming = mine[batch[i + 1]] if i + 1 < len(batch) else None
-    tagged = sum(1 for item in mine.values() if item.vibes)
+    tagged = sum(1 for item in mine.values() if item.vibes and item is not album)  # the card counts itself live
     return render(
         request, "triage.html", user=user, album=album, i=i, total=len(batch), tagged=tagged,
         vibes=_user_vibes(db, user), prev_url=_triage_url(batch, i - 1) if i else None,

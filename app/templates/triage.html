@@ -5,8 +5,10 @@
 <div class="page triage">
   {% if album %}
   {% call window("Tag Albums", "🏷️") %}
-  <div class="status-bar triage-progress">
-    <span><b>{{ i + 1 }}</b> of {{ total }}</span>
+  {%- set done = tagged + (1 if album.vibes else 0) %}
+  <div class="status-bar triage-progress" data-total="{{ total }}" data-tagged-others="{{ tagged }}">
+    <span>Album <b>{{ i + 1 }}</b> of {{ total }}</span>
+    <span><b data-tagged>{{ done }}</b> tagged · <b data-left>{{ total - done }}</b> left</span>
   </div>
   <article class="triage-card" data-triage-card>
     <div class="cover big">

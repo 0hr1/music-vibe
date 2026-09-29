@@ -161,6 +161,16 @@ document.addEventListener("submit", (e) => {
     if (Math.abs(dx) > 70 && Math.abs(dx) > 2 * Math.abs(dy)) go(dx < 0 ? "next" : "prev");
   });
 
+  // Keep "N tagged · M left" in step with the vibes on this card
+  document.addEventListener("change", (e) => {
+    const bar = document.querySelector(".triage-progress");
+    if (!bar || !e.target.closest("[data-triage-card]")) return;
+    const here = document.querySelector("[data-triage-card] input[name=vibes]:checked") ? 1 : 0;
+    const tagged = Number(bar.dataset.taggedOthers) + here;
+    bar.querySelector("[data-tagged]").textContent = tagged;
+    bar.querySelector("[data-left]").textContent = Number(bar.dataset.total) - tagged;
+  });
+
   document.addEventListener("submit", (e) => {
     const title = e.target.dataset?.confirmRemove;
     if (title !== undefined && !confirm(`Remove “${title}” from your library? This can't be undone.`)) e.preventDefault();
