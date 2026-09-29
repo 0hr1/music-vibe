@@ -16,6 +16,27 @@
   loop running that breaks later `asyncio.run()` tests.
 - The user works over SSH, so Claude in Chrome can't reach their browser; use Playwright.
 
+### What to test
+
+Test user flows, not lines: there's no coverage target (Python sits around 85%, and JavaScript isn't
+measured at all, which is where bugs have got through).
+
+- **Every user-facing flow has at least one browser test** of its main path. A new page or flow
+  isn't done without one.
+- **JavaScript that saves or looks things up in the background gets tested in combination**: each
+  action followed straight away by leaving the page / typing / the next action, not each on its own.
+  Triage keeps a list of card actions (`CARD_ACTIONS` in `tests/e2e/test_triage.py`); add new ones.
+- **Every bug gets a regression test that fails without the fix.** Revert just the fix (e.g.
+  `git stash -- app/`), watch the test go red, restore it, watch it go green. A test that passes
+  either way proves nothing.
+- **Run the browser tests you touched 10 times** before calling it done:
+  `.venv/bin/pytest --count 10 tests/e2e/test_<name>.py`. Timing bugs can fail 1 run in 5.
+- **Before relying on how a library behaves in an edge case, check it with a quick probe** (log the
+  events, print the values). E.g. htmx fires `htmx:afterRequest` on an ancestor, not the element that
+  sent the request, when the response swapped that element out; assuming otherwise left triage's
+  Next button stuck.
+- **Only commit when the suite passes**: check pytest's result, not just that the command ran.
+
 ## Changing the database layout
 
 A deploy upgrades the live database in place, on startup. Any change to a table in `app/models.py`

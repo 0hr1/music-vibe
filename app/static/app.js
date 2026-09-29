@@ -18,7 +18,7 @@ document.addEventListener("htmx:beforeSwap", (e) => {
   const val = (name) => box.querySelector(`input[name=${name}]`)?.value ?? "";
   if (`${val("year")}|${val("genres")}` !== box.dataset.original) {
     e.detail.shouldSwap = false;
-    box.querySelector("small")?.remove();
+    box.querySelector("[data-lookup-note]")?.remove();
   }
 });
 
@@ -27,7 +27,7 @@ document.addEventListener("htmx:beforeSwap", (e) => {
   const box = e.detail.requestConfig?.elt;
   if (box?.matches?.("[data-spotify-auto]") && box.querySelector("input[name=spotify_url]").value.trim()) {
     e.detail.shouldSwap = false;
-    box.querySelector("small")?.remove();
+    box.querySelector("[data-lookup-note]")?.remove();
   }
 });
 
@@ -172,13 +172,20 @@ document.addEventListener("submit", (e) => {
     bar.querySelector("[data-left]").textContent = Number(bar.dataset.total) - tagged;
   };
   document.addEventListener("change", (e) => { if (e.target.closest("[data-triage-card]")) count(); });
-  document.addEventListener("htmx:afterSwap", (e) => { if (e.detail.target.id === "triage-vibes") count(); });
+  document.addEventListener("htmx:afterSwap", (e) => {
+    if (e.detail.target.id !== "triage-vibes") return;
+    count();
+    if (!document.activeElement || document.activeElement === document.body) {
+      document.querySelector("[data-new-vibe-open]")?.focus();  // the name box it had is gone
+    }
+  });
 
   // "+ new vibe" opens into a name box in its place; Esc (or leaving it empty) closes it again
-  const closeNewVibe = (form) => {
+  const closeNewVibe = (form, refocus) => {
     form.hidden = true;
     form.reset();
     form.previousElementSibling.hidden = false;
+    if (refocus) form.previousElementSibling.focus();  // so arrow keys move between albums again
   };
   document.addEventListener("click", (e) => {
     const open = e.target.closest("[data-new-vibe-open]");
@@ -189,7 +196,7 @@ document.addEventListener("submit", (e) => {
   });
   document.addEventListener("keydown", (e) => {
     const form = e.target.closest?.(".new-vibe");
-    if (form && e.key === "Escape") closeNewVibe(form);
+    if (form && e.key === "Escape") closeNewVibe(form, true);
   });
   document.addEventListener("focusout", (e) => {
     const form = e.target.closest?.(".new-vibe");

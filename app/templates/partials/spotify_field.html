@@ -11,6 +11,6 @@
             hx-include="[name=title],[name=creator],[name=spotify_url]">Find</button>
     {% endif %}
   </div>
-  {% if auto %}<small class="muted">Looking on Spotify<span class="dots"></span></small>
+  {% if auto %}<small class="muted" data-lookup-note>Looking on Spotify<span class="dots"></span></small>
   {% elif spotify_note %}<small class="muted">{{ spotify_note }}</small>{% endif %}
 </div>

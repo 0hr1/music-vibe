@@ -39,7 +39,7 @@
     <div class="stack" data-refine data-original="{{ v_year or '' }}|{{ v_genres }}" hx-trigger="load" hx-swap="outerHTML"
          hx-get="/albums/refine?title={{ v_title|urlencode }}&artist={{ v_creator|urlencode }}&year={{ v_year or '' }}&genres={{ v_genres|urlencode }}">
       {% include "partials/year_genres.html" %}
-      <small class="muted">Checking MusicBrainz for original year and detailed genres<span class="dots"></span></small>
+      <small class="muted" data-lookup-note>Checking MusicBrainz for original year and detailed genres<span class="dots"></span></small>
     </div>
     {% else %}
     {% include "partials/year_genres.html" %}
