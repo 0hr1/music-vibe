@@ -2,6 +2,7 @@
 and deleting it."""
 
 import asyncio
+import re
 
 import pytest
 from playwright.sync_api import expect
@@ -126,3 +127,68 @@ def test_edit_and_delete_album(logged_in, make_album, make_vibe, db):
     page.once("dialog", lambda d: d.accept())
     page.get_by_role("button", name="Delete album").click()
     expect(page.get_by_text("Your library is empty.")).to_be_visible()
+
+
+def test_double_click_adds_the_album_once(logged_in, monkeypatch, db):
+    async def slow_download(url):  # a search pick downloads its cover before the album is saved
+        await asyncio.sleep(1)
+        return None
+
+    monkeypatch.setattr(main.covers, "download", slow_download)
+    page = logged_in
+    page.goto("/albums/new")
+    page.get_by_role("textbox", name="Title").fill("Twice")
+    page.evaluate("document.querySelector('input[name=cover_url]').value = 'https://coverartarchive.org/c.jpg'")
+    # A second click while the first is still saving (a dblclick is too quick: Chrome merges those)
+    page.evaluate("""() => {
+        const add = [...document.querySelectorAll("button")].find((b) => b.textContent === "Add to library");
+        add.click();
+        setTimeout(() => add.click(), 150);
+    }""")
+    expect(page.locator(".card")).to_have_count(1)
+    page.wait_for_timeout(1500)  # long enough for a second save to land
+    assert db.query(Item).filter_by(title="Twice").count() == 1
+
+
+def test_picking_an_album_you_have_warns_before_adding_it_again(logged_in, make_album, db):
+    owned = make_album("Loveless", "My Bloody Valentine", external_id="deezer:1")
+    page = logged_in
+    _pick_loveless(page)
+    notice = page.locator(".notice")
+    expect(notice).to_contain_text("You already have Loveless in your library.")
+    expect(notice.get_by_role("link", name="Loveless")).to_have_attribute("href", f"/albums/{owned.id}")
+
+    add = page.get_by_role("button", name="Add to library")
+    add.click()  # refused until the copy is asked for
+    page.wait_for_timeout(300)
+    expect(page).to_have_url(re.compile(r"/albums/new$"))
+    page.get_by_role("checkbox", name="Add another copy anyway").check()
+    add.click()
+    expect(page.locator(".card")).to_have_count(2)
+
+
+def test_no_warning_for_an_album_you_dont_have(logged_in, make_album):
+    make_album("Loveless", "Someone Else")  # same title, different artist
+    page = logged_in
+    _pick_loveless(page)
+    expect(page.get_by_role("spinbutton", name="Year")).to_have_value("1991")
+    expect(page.locator(".notice")).to_have_count(0)
+
+
+def test_picking_another_result_keeps_your_vibes_and_notes(logged_in, db):
+    page = logged_in
+    _pick_loveless(page)
+    page.locator("label.chip-toggle", has_text="fall").click()
+    page.get_by_role("textbox", name="Notes").fill("for rainy days")
+    page.get_by_role("textbox", name="Title").fill("Wrong edition")
+
+    page.get_by_role("button", name="Loveless").click()  # picked again (as if another edition)
+    expect(page.get_by_role("textbox", name="Title")).to_have_value("Loveless")
+    expect(page.locator("label.chip-toggle", has_text="fall").locator("input")).to_be_checked()
+    expect(page.locator("label.chip-toggle", has_text="summer").locator("input")).not_to_be_checked()
+    expect(page.get_by_role("textbox", name="Notes")).to_have_value("for rainy days")
+
+    page.get_by_role("button", name="Add to library").click()
+    expect(page.locator(".card")).to_have_count(1)
+    album = db.query(Item).one()
+    assert [v.name for v in album.vibes] == ["fall"] and album.notes == "for rainy days"

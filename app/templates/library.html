@@ -2,11 +2,13 @@
 {% from "macros.html" import window %}
 {% block title %}Library · music vibe{% endblock %}
 {% block content %}
-<div class="library">
+{#- No htmx history snapshots here: a snapshot is the page's HTML, which doesn't hold what was ticked or
+typed, so Back showed a filtered grid under an empty filter form. Back refetches the page instead. -#}
+<div class="library" hx-history="false">
   <div class="filters-backdrop" data-close-filters></div>
   {% call window("Filters", "🔍", id="filters", cls="filters") %}
   <form hx-get="/" hx-target="#grid" hx-push-url="true" hx-indicator="#grid"
-        hx-trigger="change, input changed delay:300ms from:find input[type=search]"
+        hx-trigger="change, input changed delay:300ms from:find input[type=search], input changed delay:500ms from:.year-input"
         class="stack" id="filter-form">
     <label class="field"><span>Search</span>
       <input type="search" name="q" value="{{ f.q }}" placeholder="title or artist"></label>
@@ -30,9 +32,9 @@
     <fieldset class="group">
       <legend>Year</legend>
       <div class="row">
-        <input type="number" name="year_min" value="{{ f.year_min or '' }}" placeholder="{{ years[0] or 'from' }}" inputmode="numeric" aria-label="From year">
+        <input class="year-input" type="number" name="year_min" value="{{ f.year_min or '' }}" placeholder="{{ years[0] or 'from' }}" inputmode="numeric" aria-label="From year">
         <span>–</span>
-        <input type="number" name="year_max" value="{{ f.year_max or '' }}" placeholder="{{ years[1] or 'to' }}" inputmode="numeric" aria-label="To year">
+        <input class="year-input" type="number" name="year_max" value="{{ f.year_max or '' }}" placeholder="{{ years[1] or 'to' }}" inputmode="numeric" aria-label="To year">
       </div>
     </fieldset>
 
@@ -81,7 +83,7 @@
     <a class="btn" href="/albums/new">+ Add album</a>
   </div>
   <form id="bulk-form" class="bulk-bar window" hx-post="/albums/bulk" hx-target="#grid" hx-include="#filter-form, #grid">
-    <span class="bulk-count"><b data-bulk-count>0</b> selected</span>
+    <span class="bulk-count"><b data-bulk-count>0</b> selected<span data-bulk-offscreen hidden></span></span>
     <button class="btn" type="button" data-select-all>All</button>
     <button class="btn" type="button" data-select-none data-needs-selection>None</button>
     {% if vibes %}

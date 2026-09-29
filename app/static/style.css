@@ -194,6 +194,7 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
   padding: 8px 12px;
   box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
 }
+.owned-notice { margin-bottom: 12px; }
 .big-icon { font-size: 40px; line-height: 1; }
 
 .desktop { padding: 16px; max-width: 1440px; margin: 0 auto; }

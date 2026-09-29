@@ -7,6 +7,7 @@
   <form method="post" action="/login" class="stack">
     <p class="dialog-intro"><span class="big-icon" aria-hidden="true">💿</span>Type a user name and password to log on.</p>
     {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
     <label class="field"><span>User name:</span>
       <input name="username" value="{{ username or '' }}" autocomplete="username" autocapitalize="none" required autofocus></label>
     <label class="field"><span>Password:</span>

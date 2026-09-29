@@ -76,3 +76,14 @@ def test_new_database_starts_at_the_latest_version(tmp_path):
     migrations.upgrade(engine)
     with engine.connect() as conn:
         assert conn.exec_driver_sql("PRAGMA user_version").scalar() == len(migrations.STEPS)
+
+
+def test_prefill_ignores_junk_vibe_ids(client, monkeypatch):
+    from app import deezer
+
+    async def get_album(album_id):
+        return {"external_id": "deezer:1", "title": "T", "artist": "A", "year": None, "genres": [], "cover_url": ""}
+
+    monkeypatch.setattr(deezer, "get_album", get_album)
+    r = client.get("/albums/prefill", params={"source": "deezer", "id": "1", "vibes": ["²", "9" * 30, "x"]})
+    assert r.status_code == 200

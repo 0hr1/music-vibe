@@ -9,11 +9,15 @@
   {%- set prefill = prefill or {} -%}
   {%- set v_title, v_creator, v_year = prefill.title, prefill.artist, prefill.year -%}
   {%- set v_genres = (prefill.genres or [])|join(", ") -%}
-  {%- set v_selected = [] -%}
-  {%- set v_spotify, v_notes = "", "" -%}
+  {%- set v_selected = keep_vibes or [] -%}
+  {%- set v_spotify, v_notes = "", keep_notes or "" -%}
   {%- set v_cover = prefill.cover_url or "" -%}
 {%- endif -%}
 {% if lookup_failed %}<p class="error">Couldn't load that album's details. You can fill the fields in by hand.</p>{% endif %}
+{% if owned %}
+<div class="notice owned-notice">You already have <a href="/albums/{{ owned.id }}">{{ owned.title }}</a> in your library.
+  <label class="check"><input type="checkbox" required> Add another copy anyway</label></div>
+{% endif %}
 {% if not album %}
 <input type="hidden" name="external_id" value="{{ prefill.external_id or '' }}">
 <input type="hidden" name="cover_url" value="{{ prefill.cover_url or '' }}">

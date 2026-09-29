@@ -9,6 +9,7 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -122,6 +123,10 @@ async def _security_headers(request: Request, call_next):
     response = await call_next(request)
     for name, value in SECURITY_HEADERS.items():
         response.headers.setdefault(name, value)
+    if response.headers.get("content-type", "").startswith("text/html"):
+        # Pages show the library as it is now: Back mustn't bring up a stale copy from the browser's
+        # cache (e.g. albums just tagged still showing as untagged), nor show them after logging out
+        response.headers.setdefault("Cache-Control", "no-store")
     return response
 
 
@@ -151,11 +156,28 @@ templates.env.globals["spotify_enabled"] = spotify.enabled
 templates.env.globals["static_url"] = static_url
 
 
+def _local_path(url: str) -> str | None:
+    """The path and query of a URL on this site, or None: only these may be sent back to after login.
+    Browsers take "//host", "/\\host" and "/<tab>/host" to another site, so those are refused."""
+    return url if re.fullmatch(r"/(?![/\\])[^\x00-\x20\x7f\\]*", url) else None
+
+
 @app.exception_handler(LoginRequired)
 async def _login_required(request: Request, _exc):
+    """Off to the login page, which comes back here afterwards: to this page, or for a background
+    (htmx) request or a form sent after the session ran out, the page it came from."""
+    if request.method == "GET" and not request.headers.get("HX-Request"):
+        back = request.url
+    else:
+        back = urlsplit(request.headers.get("HX-Current-URL") or request.headers.get("referer") or "")
+        if back.netloc != request.url.netloc:
+            back = None
+    target = "/login"
+    if back and (path := back.path + (f"?{back.query}" if back.query else "")) not in ("/", "/login"):
+        target += "?" + urlencode({"next": path})
     if request.headers.get("HX-Request"):
-        return Response(status_code=204, headers={"HX-Redirect": "/login"})
-    return RedirectResponse("/login", status_code=303)
+        return Response(status_code=204, headers={"HX-Redirect": target})
+    return RedirectResponse(target, status_code=303)
 
 
 def render(request: Request, name: str, status_code: int = 200, **ctx):
@@ -206,24 +228,27 @@ def needs_invite(db: Session, username: str) -> bool:
 
 
 @app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request, db: Session = Depends(get_db)):
-    return render(request, "login.html", needs_code=not signup_open(db))
+def login_page(request: Request, next: str = "", db: Session = Depends(get_db)):
+    return render(request, "login.html", needs_code=not signup_open(db), next=_local_path(next))
 
 
 @app.post("/login")
-def login(request: Request, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+def login(request: Request, username: str = Form(...), password: str = Form(...), next: str = Form(""),
+          db: Session = Depends(get_db)):
+    next = _local_path(next)
     limits = _login_limits(request, username)
     if any(limiter.blocked(key) for limiter, key in limits):
-        return render(request, "login.html", 429, error=TOO_MANY, username=username, needs_code=not signup_open(db))
+        return render(request, "login.html", 429, error=TOO_MANY, username=username, next=next,
+                      needs_code=not signup_open(db))
     user = db.scalar(select(User).where(func.lower(User.username) == username.strip().lower()))
     if not check_login(user, password):
         for limiter, key in limits:
             limiter.hit(key)
         return render(request, "login.html", 401, error="Wrong username or password.",
-                      username=username, needs_code=not signup_open(db))
+                      username=username, next=next, needs_code=not signup_open(db))
     ratelimit.login_by_user_ip.reset(limits[1][1])
     log_in(request, user)
-    return redirect("/")
+    return redirect(next or "/")
 
 
 @app.get("/register", response_class=HTMLResponse)
@@ -343,7 +368,7 @@ def _admin_page(request: Request, db: Session, admin: User, status_code: int = 2
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page(request: Request, admin: User = Depends(admin_user), db: Session = Depends(get_db)):
-    return _admin_page(request, db, admin)
+    return _admin_page(request, db, admin, reset=request.session.pop("reset", None))
 
 
 @app.post("/admin/invites")
@@ -371,13 +396,16 @@ def _other_user(db: Session, admin: User, user_id: int) -> User:
     return target
 
 
-@app.post("/admin/users/{user_id}/reset-password", response_class=HTMLResponse)
+@app.post("/admin/users/{user_id}/reset-password")
 def reset_password(request: Request, user_id: int, admin: User = Depends(admin_user), db: Session = Depends(get_db)):
     target = _other_user(db, admin, user_id)
     temp = secrets.token_urlsafe(9)
     target.password_hash = hash_password(temp)
     db.commit()
-    return _admin_page(request, db, admin, reset=(target.username, temp))
+    # Shown once on the admin page. Not straight from this POST: reloading that would reset it again,
+    # and the password already sent on would stop working.
+    request.session["reset"] = (target.username, temp)
+    return redirect("/admin")
 
 
 @app.post("/admin/users/{user_id}/delete")
@@ -612,8 +640,10 @@ async def search_albums_mb(request: Request, q: str = "", user: User = Depends(c
 
 
 @app.get("/albums/prefill", response_class=HTMLResponse)
-async def prefill_album(request: Request, source: str, id: str, user: User = Depends(current_user),
-                        db: Session = Depends(get_db)):
+async def prefill_album(request: Request, source: str, id: str, vibes: list[str] = Query(default=[]),
+                        notes: str = "", user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The add form's fields for a search result. Vibes ticked and notes typed for a result picked
+    earlier are kept: they're the user's, not the album's."""
     try:
         if source == "deezer" and id.isdigit():
             prefill = await deezer.get_album(id)
@@ -624,7 +654,18 @@ async def prefill_album(request: Request, source: str, id: str, user: User = Dep
     except httpx.HTTPError:
         prefill = {}
     return render(request, "partials/album_fields.html", vibes=_user_vibes(db, user), prefill=prefill,
-                  album=None, lookup_failed=not prefill, refine=source == "deezer" and bool(prefill))
+                  album=None, lookup_failed=not prefill, refine=source == "deezer" and bool(prefill),
+                  keep_vibes=[int(n) for n in vibes if re.fullmatch(r"[0-9]{1,9}", n)], keep_notes=notes,
+                  owned=_owned_copy(db, user, prefill) if prefill else None)
+
+
+def _owned_copy(db: Session, user: User, info: dict) -> Item | None:
+    """The user's album that this search result is, by source id or by same title and artist."""
+    mine = select(Item).where(Item.user_id == user.id, Item.kind == "album")
+    if info.get("external_id") and (item := db.scalars(mine.where(Item.external_id == info["external_id"])).first()):
+        return item
+    wanted = (importer.norm(info.get("title") or ""), importer.norm(info.get("artist") or ""))
+    return next((i for i in db.scalars(mine) if (importer.norm(i.title), importer.norm(i.creator)) == wanted), None)
 
 
 @app.get("/albums/refine", response_class=HTMLResponse)
@@ -710,8 +751,18 @@ async def import_add(request: Request, user: User = Depends(current_user), db: S
         db.add(item)
         added.append(item)
     db.commit()
-    return render(request, "import_done.html", user=user, added=added, failed=failed,
-                  batch=f"{min(a.id for a in added)}-{max(a.id for a in added)}" if added else "")
+    # A page of its own, so reloading it doesn't send the form again (and add nothing)
+    batch = f"{min(a.id for a in added)}-{max(a.id for a in added)}" if added else ""
+    return redirect("/albums/import/done?" + urlencode({"batch": batch, "failed": failed}))
+
+
+@app.get("/albums/import/done", response_class=HTMLResponse)
+def import_done(request: Request, batch: str = "", failed: str = "", user: User = Depends(current_user),
+                db: Session = Depends(get_db)):
+    span = _span(batch)
+    added = db.scalars(select(Item).where(*_in_triage(user, span)).order_by(Item.id)).all() if span else []
+    return render(request, "import_done.html", user=user, added=added, failed=max(0, _int_or_none(failed) or 0),
+                  batch=batch if span else "")
 
 
 # ---------- triage: tagging albums one card at a time ----------
@@ -797,7 +848,7 @@ def triage_card(request: Request, album_id: int, batch: str = "", user: User = D
                         tagged_others=_count(db, *mine, others, Item.vibes.any()))
     else:
         progress = dict(left_others=_count(db, *mine, others))
-    response = render(
+    return render(
         request, "triage.html", user=user, album=album, span=span, batch=batch if span else "",
         vibes=(vibes := _user_vibes(db, user)), suggested_color=_unused_color(vibes),
         prev_url=_triage_url(earlier.id, span) if earlier else None,
@@ -805,8 +856,6 @@ def triage_card(request: Request, album_id: int, batch: str = "", user: User = D
         last=upcoming is None, prefetch=upcoming.id if upcoming and not upcoming.genres_checked else None,
         known_genres=_known_genres(db, user), **progress,
     )
-    response.headers["Cache-Control"] = "no-store"  # Back must show the vibes as saved, not a cached copy
-    return response
 
 
 # Colours a vibe made on the fly gets, in order, skipping ones already in use
