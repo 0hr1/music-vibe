@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "macros.html" import window %}
+{% block title %}Tag albums · music vibe{% endblock %}
+{% block content %}
+<div class="page triage">
+  {% if album %}
+  {% call window("Tag Albums", "🏷️") %}
+  <div class="status-bar triage-progress">
+    <span><b>{{ i + 1 }}</b> of {{ total }}</span>
+  </div>
+  <article class="triage-card" data-triage-card>
+    <div class="cover big">
+      {% if album.cover_file %}<img src="/covers/{{ album.cover_file }}" alt="">
+      {% else %}<span class="no-cover" aria-hidden="true">💿</span>{% endif %}
+    </div>
+    <div class="stack grow">
+      <div class="triage-head">
+        <h2>{{ album.title }}</h2>
+        <p class="muted">{{ album.creator }}<span id="triage-year">{% if album.year %} · {{ album.year }}{% endif %}</span></p>
+        {% if album.spotify_url %}<a class="btn spotify" href="{{ album.spotify_url }}" target="_blank" rel="noopener">▶ Spotify</a>{% endif %}
+      </div>
+
+      <fieldset class="group">
+        <legend>Vibes</legend>
+        {% if vibes %}
+        <form class="chips" hx-post="/triage/{{ album.id }}/vibes" hx-trigger="change" hx-swap="none" autocomplete="off" data-save>
+          {% for v in vibes %}
+          <label class="chip-toggle" style="--c: {{ v.color }}; --t: {{ v.color|text_on }}">
+            <input type="checkbox" name="vibes" value="{{ v.id }}" {% if v in album.vibes %}checked{% endif %}
+                   {% if loop.index <= 9 %}data-key="{{ loop.index }}"{% endif %}>
+            <span>{% if loop.index <= 9 %}<kbd>{{ loop.index }}</kbd>{% endif %}{{ v.name }}</span>
+          </label>
+          {% endfor %}
+        </form>
+        {% else %}
+        <p class="muted">You haven't made any vibes yet. <a href="/vibes">Create some</a> and come back.</p>
+        {% endif %}
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Genres</legend>
+        {% with refine = not album.genres_checked %}{% include "partials/triage_genres.html" %}{% endwith %}
+        <form class="row triage-add-genre" hx-post="/triage/{{ album.id }}/genres" hx-target="#triage-genres"
+              hx-swap="outerHTML" hx-on::after-request="if (event.detail.successful) this.reset()" data-save>
+          <input name="add" list="known-genres" placeholder="add a genre" aria-label="Add a genre" autocomplete="off">
+          <button class="btn" type="submit">Add</button>
+        </form>
+        <datalist id="known-genres">{% for g in known_genres %}<option value="{{ g }}">{% endfor %}</datalist>
+      </fieldset>
+    </div>
+  </article>
+
+  <div class="triage-nav">
+    {% if prev_url %}<a class="btn" href="{{ prev_url }}" data-triage-nav="prev">← Back</a>{% endif %}
+    <form method="post" action="/triage/{{ album.id }}/delete" data-confirm-remove="{{ album.title }}">
+      <input type="hidden" name="ids" value="{{ ids }}"><input type="hidden" name="i" value="{{ i }}">
+      <button class="btn danger" type="submit">Remove<span class="not-mobile"> from library</span></button>
+    </form>
+    <span class="spacer"></span>
+    <a class="btn primary" href="{{ next_url }}" data-triage-nav="next">{{ "Next →" if i + 1 < total else "Finish →" }}</a>
+  </div>
+  <p class="muted triage-keys">Keys: <kbd>1</kbd>–<kbd>9</kbd> toggle vibes · <kbd>→</kbd> or <kbd>Enter</kbd> next · <kbd>←</kbd> back</p>
+  {% if prefetch %}<div hidden hx-post="/triage/{{ prefetch }}/refine" hx-trigger="load delay:500ms" hx-swap="none"></div>{% endif %}
+  {% endcall %}
+
+  {% else %}
+  {% call window("All Tagged", "✅") %}
+  <div class="stack">
+    {% if total %}
+    <p><b>That's all {{ total }} album{{ '' if total == 1 else 's' }}.</b> {{ tagged }} of them {{ 'has' if tagged == 1 else 'have' }} vibes now.</p>
+    {% else %}
+    <p>There's nothing here to tag.</p>
+    {% endif %}
+    <div class="button-row">
+      {% if total %}<a class="btn" href="/triage?ids={{ ids }}&i={{ total - 1 }}">← Back</a>{% endif %}
+      <a class="btn primary" href="/">Go to library</a>
+    </div>
+  </div>
+  {% endcall %}
+  {% endif %}
+</div>
+{% endblock %}

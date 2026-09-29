@@ -59,5 +59,7 @@ def test_import_review_and_add(client, monkeypatch, make_album, db):
     assert "already in library" in r.text and "No match found" in r.text
     r = client.post("/albums/import/add", data={"row": ["0", "1"], "pick-0": "1", "pick-1": "2"})
     assert "Added 1 album." in r.text
+    kid_a = db.query(Item).filter_by(title="Kid A").one()
+    assert f'href="/triage?ids={kid_a.id}"' in r.text
     titles = sorted(t for (t,) in db.query(Item.title).all())
     assert titles == ["Kid A", "Long Season"]

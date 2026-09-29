@@ -408,7 +408,7 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .filters, .grid-wrap { transition: none; }
+  .filters, .grid-wrap, .triage-card { transition: none; }
 }
 
 .results-heading { margin: 12px 0 4px; font-weight: bold; font-size: 13px; }
@@ -438,6 +438,42 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
 .import-search input { flex: 1; min-width: 0; }
 .import-row.htmx-request { opacity: 0.5; }
 .done-item { display: flex; align-items: center; gap: 10px; padding: 4px; }
+
+/* ---------- triage (tagging one album at a time) ---------- */
+
+.triage-card { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start;
+  transition: transform 0.15s ease-out; }
+.triage-card .cover.big .no-cover { font-size: 96px; }
+.triage-head h2 { margin: 0; font-size: 20px; line-height: 1.25; overflow-wrap: anywhere; }
+.triage-head p { margin: 2px 0 8px; }
+.triage-head .btn.spotify { min-height: 28px; padding: 2px 10px; font-size: 13px; }
+.triage .chip-toggle span { padding: 7px 12px; font-size: 14px; }
+.chip-toggle kbd { font: 11px ui-monospace, monospace; padding: 0 4px; margin-right: 5px;
+  background: var(--field); color: var(--text); border: 1px solid var(--shadow); }
+.genre-chips { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.genre-chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 9px; font-size: 13px;
+  background: var(--field); box-shadow: 1px 1px 0 var(--dark); border: 1px solid var(--shadow); }
+.genre-chip button { font: inherit; font-size: 15px; line-height: 1; min-width: 26px; min-height: 26px; padding: 0;
+  background: none; border: 0; color: var(--muted); cursor: pointer; }
+.genre-chip button:hover, .genre-chip button:focus-visible { color: var(--danger); }
+#triage-genres small { display: block; margin-bottom: 8px; }
+.triage-add-genre input { flex: 1; min-width: 0; }
+.triage-nav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 16px; }
+.triage-nav form { margin: 0; }
+.triage-nav .btn.primary { min-width: 120px; }
+.triage-keys { margin: 10px 0 0; font-size: 12px; text-align: right; }
+.triage-keys kbd { font: 11px ui-monospace, monospace; padding: 0 4px; background: var(--field); border: 1px solid var(--shadow); }
+
+@media (max-width: 800px) {
+  .triage-card { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .triage-card .cover.big { width: min(100%, 240px); justify-self: center; }
+  .triage-keys, .chip-toggle kbd, .not-mobile { display: none; }
+  /* Back / Next stay in reach above the taskbar */
+  .triage-nav { position: sticky; z-index: 5; bottom: calc(var(--taskbar-h) + env(safe-area-inset-bottom) + 6px);
+    flex-wrap: nowrap; margin: 12px -6px 0; padding: 6px; background: var(--face); box-shadow: var(--raised); }
+  .triage-nav .spacer { display: none; }
+  .triage-nav .btn.primary { flex: 1; min-width: 0; }
+}
 
 /* ---------- selecting albums (bulk edit) ---------- */
 

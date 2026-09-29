@@ -1,0 +1,18 @@
+{#- An album's genres on the triage card, each with a button to remove it. With `refine`, it asks
+MusicBrainz for better ones as soon as it loads. -#}
+<div id="triage-genres"{% if refine %} hx-post="/triage/{{ album.id }}/refine" hx-trigger="load" hx-swap="outerHTML"{% endif %}>
+  {% if album.genres %}
+  <ul class="genre-chips">
+    {% for g in album.genres|sort(attribute="name") %}
+    <li class="genre-chip">{{ g.name }}<button type="button" aria-label="Remove {{ g.name }}" data-save
+        hx-post="/triage/{{ album.id }}/genres" hx-vals='{"remove": {{ g.name|tojson }}}'
+        hx-target="#triage-genres" hx-swap="outerHTML">×</button></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No genres.</p>
+  {% endif %}
+  {% if refine %}<small class="muted">Checking MusicBrainz for detailed genres<span class="dots"></span></small>
+  {% elif note %}<small class="muted">{{ note }}</small>{% endif %}
+</div>
+{% if year_changed %}<span id="triage-year" hx-swap-oob="true">{% if album.year %} · {{ album.year }}{% endif %}</span>{% endif %}

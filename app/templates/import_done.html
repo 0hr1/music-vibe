@@ -20,7 +20,12 @@
     {% endif %}
     <div class="button-row">
       <a class="btn" href="/albums/import">Import more</a>
+      {% if added %}
+      <a class="btn" href="/">Go to library</a>
+      <a class="btn primary" href="/triage?ids={{ triage_ids }}">Tag {{ "it" if added|length == 1 else "these " ~ added|length }} →</a>
+      {% else %}
       <a class="btn primary" href="/">Go to library</a>
+      {% endif %}
     </div>
   </div>
   {% endcall %}

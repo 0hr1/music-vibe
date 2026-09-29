@@ -13,8 +13,14 @@ def _username_unique_ignoring_case(conn: Connection) -> None:
     conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_username_lower ON users (lower(username))")
 
 
+def _items_genres_checked(conn: Connection) -> None:
+    if "genres_checked" not in {c["name"] for c in inspect(conn).get_columns("items")}:  # create_all may have made it
+        conn.exec_driver_sql("ALTER TABLE items ADD COLUMN genres_checked BOOLEAN DEFAULT 0 NOT NULL")
+
+
 STEPS = [
     _username_unique_ignoring_case,
+    _items_genres_checked,
 ]
 
 

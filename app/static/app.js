@@ -95,3 +95,76 @@ document.addEventListener("submit", (e) => {
     e.stopImmediatePropagation();
   }
 }, true);
+
+// Triage (tagging albums one at a time): keys, swipes, and never leaving a card before its edits are saved
+{
+  let saving = 0;
+  let waiting = [];
+  const isSave = (e) => e.detail.elt?.closest?.("[data-save]");
+  document.addEventListener("htmx:beforeRequest", (e) => { if (isSave(e)) saving++; });
+  document.addEventListener("htmx:afterRequest", (e) => {
+    if (!isSave(e)) return;
+    saving = Math.max(0, saving - 1);
+    if (!saving) { waiting.forEach((go) => go()); waiting = []; }
+  });
+
+  const go = (dir) => {
+    const link = document.querySelector(`[data-triage-nav="${dir}"]`);
+    if (!link) return;
+    const leave = () => { location.href = link.href; };
+    if (saving) waiting.push(leave); else leave();
+  };
+
+  document.addEventListener("click", (e) => {
+    const link = e.target.closest("[data-triage-nav]");
+    if (!link || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    e.preventDefault();
+    go(link.dataset.triageNav);
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (!document.querySelector("[data-triage-card]") || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t.matches?.("textarea, select, input:not([type=checkbox])")) return;
+    if (/^[1-9]$/.test(e.key)) {
+      document.querySelector(`[data-triage-card] input[data-key="${e.key}"]`)?.click();
+    } else if (e.key === "ArrowRight" || (e.key === "Enter" && !t.closest?.("a, button"))) {
+      e.preventDefault();
+      go("next");
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      go("prev");
+    }
+  });
+
+  // Swipe the card left for the next album, right to go back
+  let start = null;
+  document.addEventListener("touchstart", (e) => {
+    const card = e.target.closest("[data-triage-card]");
+    start = card && !e.target.closest("input, button, a") && e.touches.length === 1
+      ? { card, x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+  }, { passive: true });
+  document.addEventListener("touchmove", (e) => {
+    if (!start) return;
+    const dx = e.touches[0].clientX - start.x, dy = e.touches[0].clientY - start.y;
+    if (Math.abs(dx) > Math.abs(dy)) start.card.style.transform = `translateX(${dx * 0.6}px) rotate(${dx / 40}deg)`;
+  }, { passive: true });
+  document.addEventListener("touchend", (e) => {
+    if (!start) return;
+    const { card, x, y } = start;
+    start = null;
+    const dx = e.changedTouches[0].clientX - x, dy = e.changedTouches[0].clientY - y;
+    card.style.transform = "";
+    if (Math.abs(dx) > 70 && Math.abs(dx) > 2 * Math.abs(dy)) go(dx < 0 ? "next" : "prev");
+  });
+
+  document.addEventListener("submit", (e) => {
+    const title = e.target.dataset?.confirmRemove;
+    if (title !== undefined && !confirm(`Remove “${title}” from your library? This can't be undone.`)) e.preventDefault();
+  });
+
+  // Coming back with the browser's back button shows a cached page; reload it so vibes are current
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted && document.querySelector("[data-triage-card]")) location.reload();
+  });
+}
