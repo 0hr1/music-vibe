@@ -4,6 +4,9 @@
 
 - `.venv/bin/pytest` runs everything. Tests use a throwaway data dir and never touch the network
   (fake Deezer etc. with monkeypatch).
+- Tests run in parallel on every core (pytest-xdist, `-n auto` in `pytest.ini`), each worker with its
+  own data dir. When iterating on one file, `-n0` starts faster; run the whole suite before committing.
+- `tests/conftest.py` makes password hashing cheap, since nearly every test registers or logs in.
 - **Browser tests live in `tests/e2e/`** (pytest-playwright, headless Chromium). The app runs in a
   thread of the test process, so the fixtures in `tests/conftest.py` (`make_album`, `make_vibe`, ...)
   and monkeypatching reach it. Use the `logged_in` fixture for a page logged in as `tester`.
