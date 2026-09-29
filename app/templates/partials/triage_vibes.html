@@ -1,0 +1,20 @@
+{#- The vibe chips on a triage card (each toggle saves the whole set), then a chip that opens into a
+small form for making a new vibe, which is ticked on this album straight away. -#}
+<div id="triage-vibes" class="chips">
+  <form class="vibe-toggles" hx-post="/triage/{{ album.id }}/vibes" hx-trigger="change" hx-swap="none"
+        hx-sync="closest fieldset:queue all" autocomplete="off" data-save>
+    {% for v in vibes %}
+    <label class="chip-toggle" style="--c: {{ v.color }}; --t: {{ v.color|text_on }}">
+      <input type="checkbox" name="vibes" value="{{ v.id }}" {% if v in album.vibes %}checked{% endif %}>
+      <span>{{ v.name }}</span>
+    </label>
+    {% endfor %}
+  </form>
+  <button class="new-vibe-chip" type="button" data-new-vibe-open>+ new vibe</button>
+  <form class="new-vibe" hidden hx-post="/triage/{{ album.id }}/new-vibe" hx-include="previous .vibe-toggles"
+        hx-target="#triage-vibes" hx-swap="outerHTML" hx-sync="closest fieldset:queue all" autocomplete="off" data-save>
+    <input type="color" name="color" value="{{ suggested_color }}" aria-label="Colour for the new vibe">
+    <input name="name" maxlength="64" placeholder="name it…" aria-label="New vibe name" required>
+    <button type="submit" aria-label="Create vibe">✓</button>
+  </form>
+</div>

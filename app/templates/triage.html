@@ -24,19 +24,7 @@
 
       <fieldset class="group">
         <legend>Vibes</legend>
-        {% if vibes %}
-        <form class="chips" hx-post="/triage/{{ album.id }}/vibes" hx-trigger="change" hx-swap="none" autocomplete="off" data-save>
-          {% for v in vibes %}
-          <label class="chip-toggle" style="--c: {{ v.color }}; --t: {{ v.color|text_on }}">
-            <input type="checkbox" name="vibes" value="{{ v.id }}" {% if v in album.vibes %}checked{% endif %}
-                   {% if loop.index <= 9 %}data-key="{{ loop.index }}"{% endif %}>
-            <span>{% if loop.index <= 9 %}<kbd>{{ loop.index }}</kbd>{% endif %}{{ v.name }}</span>
-          </label>
-          {% endfor %}
-        </form>
-        {% else %}
-        <p class="muted">You haven't made any vibes yet. <a href="/vibes">Create some</a> and come back.</p>
-        {% endif %}
+        {% include "partials/triage_vibes.html" %}
       </fieldset>
 
       <fieldset class="group">
@@ -61,7 +49,7 @@
     <span class="spacer"></span>
     <a class="btn primary" href="{{ next_url }}" data-triage-nav="next">{{ "Next →" if i + 1 < total else "Finish →" }}</a>
   </div>
-  <p class="muted triage-keys">Keys: <kbd>1</kbd>–<kbd>9</kbd> toggle vibes · <kbd>→</kbd> or <kbd>Enter</kbd> next · <kbd>←</kbd> back</p>
+  <p class="muted triage-keys">Keys: <kbd>→</kbd> or <kbd>Enter</kbd> next · <kbd>←</kbd> back</p>
   {% if prefetch %}<div hidden hx-post="/triage/{{ prefetch }}/refine" hx-trigger="load delay:500ms" hx-swap="none"></div>{% endif %}
   {% endcall %}
 

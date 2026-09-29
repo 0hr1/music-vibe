@@ -96,7 +96,7 @@ document.addEventListener("submit", (e) => {
   }
 }, true);
 
-// Triage (tagging albums one at a time): keys, swipes, and never leaving a card before its edits are saved
+// Triage (tagging albums one at a time): arrow keys, swipes, and never leaving a card before its edits are saved
 {
   // Tracked by request, not element: when a save swaps out its own element (removing a genre),
   // htmx reports the end of the request on an ancestor instead
@@ -132,9 +132,7 @@ document.addEventListener("submit", (e) => {
     if (!document.querySelector("[data-triage-card]") || e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target;
     if (t.matches?.("textarea, select, input:not([type=checkbox])")) return;
-    if (/^[1-9]$/.test(e.key)) {
-      document.querySelector(`[data-triage-card] input[data-key="${e.key}"]`)?.click();
-    } else if (e.key === "ArrowRight" || (e.key === "Enter" && !t.closest?.("a, button"))) {
+    if (e.key === "ArrowRight" || (e.key === "Enter" && !t.closest?.("a, button"))) {
       e.preventDefault();
       go("next");
     } else if (e.key === "ArrowLeft") {
@@ -165,13 +163,38 @@ document.addEventListener("submit", (e) => {
   });
 
   // Keep "N tagged · M left" in step with the vibes on this card
-  document.addEventListener("change", (e) => {
+  const count = () => {
     const bar = document.querySelector(".triage-progress");
-    if (!bar || !e.target.closest("[data-triage-card]")) return;
+    if (!bar) return;
     const here = document.querySelector("[data-triage-card] input[name=vibes]:checked") ? 1 : 0;
     const tagged = Number(bar.dataset.taggedOthers) + here;
     bar.querySelector("[data-tagged]").textContent = tagged;
     bar.querySelector("[data-left]").textContent = Number(bar.dataset.total) - tagged;
+  };
+  document.addEventListener("change", (e) => { if (e.target.closest("[data-triage-card]")) count(); });
+  document.addEventListener("htmx:afterSwap", (e) => { if (e.detail.target.id === "triage-vibes") count(); });
+
+  // "+ new vibe" opens into a name box in its place; Esc (or leaving it empty) closes it again
+  const closeNewVibe = (form) => {
+    form.hidden = true;
+    form.reset();
+    form.previousElementSibling.hidden = false;
+  };
+  document.addEventListener("click", (e) => {
+    const open = e.target.closest("[data-new-vibe-open]");
+    if (!open) return;
+    open.hidden = true;
+    open.nextElementSibling.hidden = false;
+    open.nextElementSibling.querySelector("input[name=name]").focus();
+  });
+  document.addEventListener("keydown", (e) => {
+    const form = e.target.closest?.(".new-vibe");
+    if (form && e.key === "Escape") closeNewVibe(form);
+  });
+  document.addEventListener("focusout", (e) => {
+    const form = e.target.closest?.(".new-vibe");
+    if (!form || form.contains(e.relatedTarget)) return;
+    if (!form.querySelector("input[name=name]").value.trim()) closeNewVibe(form);
   });
 
   document.addEventListener("submit", (e) => {

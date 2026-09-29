@@ -35,7 +35,7 @@ def _vibe(page, name):
     return page.get_by_role("checkbox", name=name)
 
 
-def test_import_then_tag_with_keys(logged_in, db):
+def test_import_then_tag(logged_in, db):
     page = logged_in
     page.goto("/albums/import")
     page.fill("textarea[name=text]", "My Bloody Valentine - Loveless\nRadiohead - Kid A")
@@ -51,17 +51,16 @@ def test_import_then_tag_with_keys(logged_in, db):
     expect(page.locator(".genre-chip")).to_have_text(["dream pop×", "shoegaze×"])
     expect(page.locator("#triage-year")).to_have_text(" · 1991")
 
-    # new accounts have fall, spring, summer, winter: keys 1-4
-    page.keyboard.press("1")
-    page.keyboard.press("4")
+    _vibe(page, "fall").click()
+    _vibe(page, "winter").click()
     expect(_vibe(page, "fall")).to_be_checked()
     expect(_vibe(page, "winter")).to_be_checked()
     expect(progress).to_contain_text("1 tagged · 1 left")  # counts albums, not vibes
-    page.keyboard.press("4")  # toggles back off
+    _vibe(page, "winter").click()  # toggles back off
     expect(_vibe(page, "winter")).not_to_be_checked()
-    page.keyboard.press("1")
+    _vibe(page, "fall").click()
     expect(progress).to_contain_text("0 tagged · 2 left")
-    page.keyboard.press("1")
+    _vibe(page, "fall").click()
     page.keyboard.press("ArrowRight")
 
     expect(page.get_by_role("heading", name="Kid A")).to_be_visible()
@@ -87,7 +86,7 @@ def test_moving_on_waits_for_the_save(logged_in, make_album, db):
     page.route("**/triage/*/vibes", lambda route: held.append(route))  # hold the save until we let it go
     page.goto(f"/triage?ids={a.id},{b.id}")
     expect(page.get_by_role("heading", name="Slow")).to_be_visible()
-    page.keyboard.press("3")  # summer
+    _vibe(page, "summer").click()
     while not held:
         page.wait_for_timeout(20)
     page.keyboard.press("ArrowRight")  # straight away
@@ -97,6 +96,34 @@ def test_moving_on_waits_for_the_save(logged_in, make_album, db):
     expect(page.get_by_role("heading", name="Next")).to_be_visible()
     db.expire_all()
     assert [v.name for v in db.get(Item, a.id).vibes] == ["summer"]
+
+
+def test_new_vibe_on_the_card(logged_in, make_album, db):
+    a, b = make_album("First", genres_checked=True), make_album("Second", genres_checked=True)
+    page = logged_in
+    page.goto(f"/triage?ids={a.id},{b.id}")
+    _vibe(page, "fall").click()
+    new = page.get_by_role("button", name="+ new vibe")
+    new.click()
+    name = page.get_by_role("textbox", name="New vibe name")
+    expect(name).to_be_focused()
+    name.press("Escape")  # changed my mind
+    expect(name).to_be_hidden()
+    expect(new).to_be_visible()
+
+    new.click()
+    name.fill("late night")
+    name.press("Enter")  # creates it; doesn't move on
+    expect(_vibe(page, "late night")).to_be_checked()
+    expect(_vibe(page, "fall")).to_be_checked()
+    expect(page.get_by_role("heading", name="First")).to_be_visible()
+    expect(new).to_be_visible()
+    page.get_by_role("link", name="Next →").click()
+
+    expect(page.get_by_role("heading", name="Second")).to_be_visible()
+    expect(_vibe(page, "late night")).not_to_be_checked()  # there for the next album too
+    db.expire_all()
+    assert [v.name for v in db.get(Item, a.id).vibes] == ["fall", "late night"]
 
 
 def test_edit_genres(logged_in, make_album, db):

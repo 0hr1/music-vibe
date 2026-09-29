@@ -448,8 +448,17 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
 .triage-head p { margin: 2px 0 8px; }
 .triage-head .btn.spotify { min-height: 28px; padding: 2px 10px; font-size: 13px; }
 .triage .chip-toggle span { padding: 7px 12px; font-size: 14px; }
-.chip-toggle kbd { font: 11px ui-monospace, monospace; padding: 0 4px; margin-right: 5px;
-  background: var(--field); color: var(--text); border: 1px solid var(--shadow); }
+.vibe-toggles { display: contents; }
+.new-vibe-chip { font: inherit; font-size: 14px; padding: 6px 12px; cursor: pointer; color: var(--muted);
+  background: transparent; border: 2px dashed var(--shadow); }
+.new-vibe-chip:hover, .new-vibe-chip:focus-visible { color: var(--text); border-color: var(--dark); outline: none; }
+.new-vibe { display: inline-flex; align-items: center; gap: 4px; padding: 2px; background: var(--face-light);
+  border: 2px solid var(--dark); box-shadow: 1px 1px 0 var(--dark); }
+.new-vibe input[type="color"] { width: 28px; height: 28px; min-height: 0; padding: 2px; box-shadow: none; }
+.new-vibe input[name="name"] { width: 11em; min-height: 28px; padding: 3px 6px; }
+.new-vibe button { font: inherit; min-width: 30px; min-height: 28px; cursor: pointer; background: var(--face);
+  border: 0; box-shadow: var(--raised); }
+.new-vibe button:active { box-shadow: var(--pressed); }
 .genre-chips { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .genre-chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 9px; font-size: 13px;
   background: var(--field); box-shadow: 1px 1px 0 var(--dark); border: 1px solid var(--shadow); }
@@ -468,7 +477,7 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
 @media (max-width: 800px) {
   .triage-card { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .triage-card .cover.big { width: min(100%, 240px); justify-self: center; }
-  .triage-keys, .chip-toggle kbd, .not-mobile { display: none; }
+  .triage-keys, .not-mobile { display: none; }
   /* Back / Next stay in reach above the taskbar */
   .triage-nav { position: sticky; z-index: 5; bottom: calc(var(--taskbar-h) + env(safe-area-inset-bottom) + 6px);
     flex-wrap: nowrap; margin: 12px -6px 0; padding: 6px; background: var(--face); box-shadow: var(--raised); }

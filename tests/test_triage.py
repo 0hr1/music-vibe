@@ -5,7 +5,7 @@ import pytest
 
 from app import main, musicbrainz
 from app.db import SessionLocal
-from app.models import Genre, Item, User
+from app.models import Genre, Item, User, Vibe
 
 
 @pytest.fixture
@@ -178,3 +178,30 @@ def test_refine_copes_with_album_removed_meanwhile(client, make_album, monkeypat
 
     monkeypatch.setattr(musicbrainz, "find_details", lookup)
     assert client.post(f"/triage/{a}/refine").status_code == 200
+
+
+def test_new_vibe_is_made_and_ticked(client, make_album, make_vibe, user, db):
+    fall = make_vibe("fall")
+    a = make_album("A")
+    r = client.post(f"/triage/{a.id}/new-vibe", data={"name": "  Late   night ", "color": "#123456", "vibes": [fall.id]})
+    assert r.status_code == 200 and "late night" not in r.text and "Late night" in r.text
+    db.expire_all()
+    item = db.get(Item, a.id)
+    assert sorted(v.name for v in item.vibes) == ["Late night", "fall"]
+    assert next(v for v in item.vibes if v.name == "Late night").color == "#123456"
+
+
+def test_new_vibe_with_an_existing_name_reuses_it(client, make_album, make_vibe, db):
+    make_vibe("winter")
+    a = make_album("A")
+    client.post(f"/triage/{a.id}/new-vibe", data={"name": "WINTER", "color": "#123456"})
+    db.expire_all()
+    assert [v.name for v in db.get(Item, a.id).vibes] == ["winter"]
+    assert db.query(Vibe).filter(Vibe.name.ilike("winter")).count() == 1
+
+
+def test_new_vibe_colour_is_one_not_in_use():
+    taken = [Vibe(name=str(i), color=c) for i, c in enumerate(main.VIBE_PALETTE[:3])]
+    assert main._unused_color(taken) == main.VIBE_PALETTE[3]
+    everything = [Vibe(name=str(i), color=c) for i, c in enumerate(main.VIBE_PALETTE)]
+    assert main._unused_color(everything) in main.VIBE_PALETTE

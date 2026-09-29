@@ -729,12 +729,44 @@ def triage_page(request: Request, ids: str = "", i: int = 0, user: User = Depend
     tagged = sum(1 for item in mine.values() if item.vibes and item is not album)  # the card counts itself live
     return render(
         request, "triage.html", user=user, album=album, i=i, total=len(batch), tagged=tagged,
-        vibes=_user_vibes(db, user), prev_url=_triage_url(batch, i - 1) if i else None,
+        vibes=(vibes := _user_vibes(db, user)), suggested_color=_unused_color(vibes), prev_url=_triage_url(batch, i - 1) if i else None,
         next_url=_triage_url(batch, i + 1), ids=",".join(map(str, batch)),
         prefetch=upcoming.id if upcoming and not upcoming.genres_checked else None,
         known_genres=db.scalars(select(Genre.name).join(Item.genres).where(Item.user_id == user.id)
                                 .group_by(Genre.name).order_by(Genre.name)).all(),
     )
+
+
+# Colours a vibe made on the fly gets, in order, skipping ones already in use
+VIBE_PALETTE = ["#e0563b", "#3bb58a", "#6b7fa3", "#d6a23b", "#b05cd6", "#3b8fe0", "#e05c9a", "#7cb342",
+                "#8d6e63", "#26a69a", "#5c6bc0", "#f4a261"]
+
+
+def _unused_color(vibes: list[Vibe]) -> str:
+    used = {v.color.lower() for v in vibes}
+    return next((c for c in VIBE_PALETTE if c not in used), VIBE_PALETTE[len(vibes) % len(VIBE_PALETTE)])
+
+
+@app.post("/triage/{album_id}/new-vibe", response_class=HTMLResponse)
+def triage_new_vibe(request: Request, album_id: int, name: str = Form(""), color: str = Form(""),
+                    vibes: list[int] = Form(default=[]), user: User = Depends(current_user),
+                    db: Session = Depends(get_db)):
+    """Make a vibe (or find the one by that name) and tick it on this album, along with the vibes
+    already ticked on the card."""
+    item = _get_album(db, user, album_id)
+    name, color = _vibe_values(name, color)
+    ticked = db.scalars(select(Vibe).where(Vibe.user_id == user.id, Vibe.id.in_(vibes))).all()
+    if name:
+        vibe = db.scalar(select(Vibe).where(Vibe.user_id == user.id, func.lower(Vibe.name) == name.lower()))
+        if not vibe:
+            vibe = Vibe(user_id=user.id, name=name, color=color)
+            db.add(vibe)
+        ticked = [*ticked, vibe] if vibe not in ticked else ticked
+    item.vibes = ticked
+    db.commit()
+    all_vibes = _user_vibes(db, user)
+    return render(request, "partials/triage_vibes.html", album=item, vibes=all_vibes,
+                  suggested_color=_unused_color(all_vibes))
 
 
 def _genre_chips(request: Request, item: Item, **ctx):
