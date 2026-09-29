@@ -31,15 +31,25 @@ document.addEventListener("htmx:beforeSwap", (e) => {
   }
 });
 
-// Slow form posts (import): show that something is happening and prevent double submits
+// Slow form posts (import, adding an album): show that something is happening and prevent double
+// submits. Runs after the confirm handlers, so a cancelled submit leaves the button alone.
 document.addEventListener("submit", (e) => {
   const form = e.target;
-  if (!form.dataset.busy) return;
+  if (!form.dataset.busy || e.defaultPrevented) return;
   const btn = form.querySelector("button[type=submit]");
   if (btn) {
+    btn.dataset.idleText ??= btn.textContent;
     btn.disabled = true;
     btn.textContent = form.dataset.busy;
   }
+});
+// Back can bring the page back from the browser's cache just as it was left, button still busy
+window.addEventListener("pageshow", (e) => {
+  if (!e.persisted) return;
+  document.querySelectorAll("form[data-busy] button[data-idle-text]").forEach((btn) => {
+    btn.disabled = false;
+    btn.textContent = btn.dataset.idleText;
+  });
 });
 
 // Enter in an inline search box runs its search instead of submitting the surrounding form

@@ -47,3 +47,18 @@ def test_import_review_and_add(logged_in):
     page.get_by_role("link", name="Go to library").click()
     expect(page.locator(".card")).to_have_count(1)
     expect(page.locator(".card")).to_contain_text("Fishmans · 1996")
+
+
+def test_back_from_the_cache_frees_the_busy_button(logged_in):
+    """Browsers with a back-forward cache show the page just as it was left, button still disabled
+    and saying "Matching albums…". Headless Chromium doesn't keep one, so the restore is simulated."""
+    page = logged_in
+    page.goto("/albums/import")
+    # Stay on the page: cancel the submit once app.js has seen it (window listeners run last)
+    page.evaluate("window.addEventListener('submit', (e) => e.preventDefault())")
+    page.fill("textarea[name=text]", "Fishmans - Long Season")
+    page.get_by_role("button", name="Find matches").click()
+    expect(page.get_by_role("button", name="Matching albums…")).to_be_disabled()
+
+    page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted: true}))")
+    expect(page.get_by_role("button", name="Find matches")).to_be_enabled()

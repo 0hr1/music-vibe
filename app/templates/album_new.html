@@ -16,7 +16,7 @@
   {% endcall %}
 
   {% call window("Album Properties", "📀", id="album-window") %}
-  <form method="post" action="/albums" enctype="multipart/form-data" class="stack">
+  <form method="post" action="/albums" enctype="multipart/form-data" class="stack" data-busy="Adding…">
     <div id="album-fields">
       {% include "partials/album_fields.html" %}
     </div>

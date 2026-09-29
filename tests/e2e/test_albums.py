@@ -126,3 +126,24 @@ def test_edit_and_delete_album(logged_in, make_album, make_vibe, db):
     page.once("dialog", lambda d: d.accept())
     page.get_by_role("button", name="Delete album").click()
     expect(page.get_by_text("Your library is empty.")).to_be_visible()
+
+
+def test_double_click_adds_the_album_once(logged_in, monkeypatch, db):
+    async def slow_download(url):  # a search pick downloads its cover before the album is saved
+        await asyncio.sleep(1)
+        return None
+
+    monkeypatch.setattr(main.covers, "download", slow_download)
+    page = logged_in
+    page.goto("/albums/new")
+    page.get_by_role("textbox", name="Title").fill("Twice")
+    page.evaluate("document.querySelector('input[name=cover_url]').value = 'https://coverartarchive.org/c.jpg'")
+    # A second click while the first is still saving (a dblclick is too quick: Chrome merges those)
+    page.evaluate("""() => {
+        const add = [...document.querySelectorAll("button")].find((b) => b.textContent === "Add to library");
+        add.click();
+        setTimeout(() => add.click(), 150);
+    }""")
+    expect(page.locator(".card")).to_have_count(1)
+    page.wait_for_timeout(1500)  # long enough for a second save to land
+    assert db.query(Item).filter_by(title="Twice").count() == 1
