@@ -117,8 +117,8 @@ def test_new_vibe_on_the_card(logged_in, make_album, db):
     expect(_vibe(page, "late night")).to_be_checked()
     expect(_vibe(page, "fall")).to_be_checked()
     expect(page.get_by_role("heading", name="First")).to_be_visible()
-    expect(new).to_be_visible()
-    page.get_by_role("link", name="Next →").click()
+    expect(new).to_be_focused()  # out of the name box, so → moves on again
+    page.keyboard.press("ArrowRight")
 
     expect(page.get_by_role("heading", name="Second")).to_be_visible()
     expect(_vibe(page, "late night")).not_to_be_checked()  # there for the next album too
@@ -185,3 +185,52 @@ def test_swipe_on_a_phone(browser, base_url, user, make_album, db):
     db.expire_all()
     assert [v.name for v in db.get(Item, a.id).vibes] == ["spring"]
     context.close()
+
+
+def _add_genre(page):
+    box = page.get_by_role("combobox", name="Add a genre")
+    box.fill("krautrock")
+    box.press("Enter")
+
+
+def _new_vibe(page):
+    page.get_by_role("button", name="+ new vibe").click()
+    page.get_by_role("textbox", name="New vibe name").fill("late night")
+    page.get_by_role("textbox", name="New vibe name").press("Enter")
+
+
+def _new_vibe_cancelled(page):
+    page.get_by_role("button", name="+ new vibe").click()
+    page.get_by_role("textbox", name="New vibe name").press("Escape")
+
+
+# Each thing you can do on a card, and what the album should look like afterwards
+CARD_ACTIONS = {
+    "tick vibe": (lambda page: _vibe(page, "summer").click(), {"vibes": ["fall", "summer"]}),
+    "untick vibe": (lambda page: _vibe(page, "fall").click(), {"vibes": []}),
+    "add genre": (_add_genre, {"genres": ["krautrock", "pop"]}),
+    "remove genre": (lambda page: page.get_by_role("button", name="Remove pop").click(), {"genres": []}),
+    "new vibe": (_new_vibe, {"vibes": ["fall", "late night"]}),
+    "cancel new vibe": (_new_vibe_cancelled, {"vibes": ["fall"]}),
+}
+
+
+@pytest.mark.parametrize("action", CARD_ACTIONS)
+def test_every_card_action_then_straight_to_next(logged_in, make_album, make_vibe, db, action):
+    """Moving on right after any edit must neither get stuck nor lose the edit. Add new card
+    actions to CARD_ACTIONS."""
+    do, want = CARD_ACTIONS[action]
+    a = make_album("This", genres=["pop"], genres_checked=True, vibes=[make_vibe("fall")])
+    b = make_album("Next one", genres_checked=True)
+    page = logged_in
+    page.goto(f"/triage?ids={a.id},{b.id}")
+    do(page)
+    if action in ("add genre", "new vibe"):  # ends typing in a box, where → moves the text cursor
+        page.get_by_role("link", name="Next →").click()
+    else:
+        page.keyboard.press("ArrowRight")
+    expect(page.get_by_role("heading", name="Next one")).to_be_visible()
+    db.expire_all()
+    item = db.get(Item, a.id)
+    got = {"vibes": [v.name for v in item.vibes], "genres": sorted(g.name for g in item.genres)}
+    assert {k: got[k] for k in want} == want
