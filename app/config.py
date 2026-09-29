@@ -16,6 +16,7 @@ ALLOW_SIGNUP = _bool("ALLOW_SIGNUP", False)
 # Who can manage invite codes and users (comma-separated). Empty: the first account.
 ADMIN_USERNAMES = {n.strip().lower() for n in os.environ.get("ADMIN_USERNAMES", "").split(",") if n.strip()}
 HTTPS_ONLY = _bool("HTTPS_ONLY", False)
+ON_FLY = bool(os.environ.get("FLY_APP_NAME"))  # Fly sets this on its machines
 MB_CONTACT = os.environ.get("MB_CONTACT", "").strip() or "no-contact-configured"
 USER_AGENT = f"music-vibe/0.1 ( {MB_CONTACT} )"
 SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID", "").strip()

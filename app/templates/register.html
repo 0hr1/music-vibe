@@ -10,7 +10,8 @@
     {% if needs_code %}
     <label class="field"><span>Invite code:</span>
       <input name="code" value="{{ code or '' }}" autocomplete="off" autocapitalize="characters" spellcheck="false"
-             placeholder="XXXX-XXXX-XXXX" required></label>
+             placeholder="XXXX-XXXX-XXXX"{% if not admin_first %} required{% endif %}></label>
+    {% if admin_first %}<p class="muted">Setting up? The admin account (from <code>ADMIN_USERNAMES</code>) needs no code.</p>{% endif %}
     {% endif %}
     <label class="field"><span>User name:</span>
       <input name="username" value="{{ username or '' }}" autocomplete="username" autocapitalize="none" required autofocus></label>

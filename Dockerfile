@@ -23,4 +23,6 @@ RUN useradd --system --uid 1000 appuser && mkdir -p /data && chown appuser /data
 EXPOSE 8000
 # Starts as root only to fix the data folder's owner, then drops to appuser (see entrypoint.sh).
 ENTRYPOINT ["entrypoint.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Forwarded headers (X-Forwarded-Proto/-For) are trusted only from FORWARDED_ALLOW_IPS (default: localhost);
+# fly.toml sets it for Fly's proxy.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

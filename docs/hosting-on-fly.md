@@ -160,9 +160,9 @@ fly secrets set \
 - `MB_CONTACT` is what MusicBrainz asks for in the User-Agent (an email or URL).
 - The Spotify pair is optional. It uses client credentials, so there's no redirect URL to configure on
   Spotify's side for the new domain.
-- `ADMIN_USERNAMES` is a safety net. Normally the **first account to register becomes admin**, and
-  on a public URL that could, in theory, be a stranger who finds it before you do. With this set, only
-  that username gets admin rights no matter who signs up first.
+- `ADMIN_USERNAMES` matters. Without it, the **first account to register becomes admin, no invite
+  code needed**, and on a public URL that could be a stranger who finds it before you do. With it set,
+  only that name can register without a code, and nobody else can take that name later.
 - **Don't** run `fly secrets import < .env`. Your `.env` has `HTTPS_ONLY=false` and `PORT`, which are
   wrong for Fly. `fly.toml` already sets `DATA_DIR=/data` and `HTTPS_ONLY=true`.
 - `SECRET_KEY` isn't needed. The app generates one and keeps it in `/data/secret_key`, so it
@@ -207,7 +207,9 @@ TLS. Our config then does two things:
 
 - `force_https = true` in `fly.toml`: anyone who types `http://` gets redirected to `https://`.
 - `HTTPS_ONLY = "true"` in `fly.toml`: the app marks the login cookie as secure-only and adds security
-  headers. Uvicorn runs with `--proxy-headers`, so it trusts Fly's proxy about the request being HTTPS.
+  headers. `FORWARDED_ALLOW_IPS = "*"` (also in `fly.toml`) lets uvicorn believe Fly's proxy that the
+  request came in over HTTPS. The login and sign-up rate limits use the `Fly-Client-IP` header for the
+  visitor's address, since Fly sets that one itself and a visitor can't fake it.
 
 You can stop here and use the `fly.dev` address for good.
 

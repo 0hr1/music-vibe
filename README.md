@@ -11,7 +11,8 @@ docker compose up -d --build
 ```
 
 Open `http://<this machine>:8420` (port set by `PORT` in `.env`; over Tailscale: `http://<tailscale-hostname>:8420`).
-The first account can always be created, and it becomes the admin (or set `ADMIN_USERNAMES`). After that,
+The first account can be created without a code and becomes the admin. If `ADMIN_USERNAMES` is set, only a name
+listed there can take that first seat (do this on anything public), and invitees can't take those names. After that,
 people need an **invite code**: click your name in the taskbar, then *Invite codes & users*, and send them the
 sign-up link. Each code can be limited to a number of accounts and days. `ALLOW_SIGNUP=true` drops the need for codes.
 The same page resets a forgotten password or deletes an account.
@@ -42,11 +43,12 @@ built in (`https://<app>.fly.dev`). Install `flyctl` and run `fly auth login`, t
 ```sh
 fly launch --no-deploy --copy-config        # creates the app; rename it if "music-vibe" is taken
 fly volumes create music_vibe_data --size 1 --region <same region as fly.toml>
-fly secrets set MB_CONTACT=you@example.com SPOTIFY_CLIENT_ID=... SPOTIFY_CLIENT_SECRET=...
+fly secrets set ADMIN_USERNAMES=<your username> MB_CONTACT=you@example.com SPOTIFY_CLIENT_ID=... SPOTIFY_CLIENT_SECRET=...
 fly deploy
 ```
 
-Open the site, create your account right away (the first account is the admin), then hand out invite codes.
+Open the site, register as the name in `ADMIN_USERNAMES` (no code needed for that one), then hand out invite codes.
+Without `ADMIN_USERNAMES`, whoever registers first on the public URL becomes admin.
 
 **Backups.** Fly snapshots the volume daily (kept 14 days, set in `fly.toml`), which covers everything
 including covers. For the database, also stream every change off the machine with Litestream to Tigris,
@@ -85,4 +87,6 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 
 - Other item kinds (movies, wallpapers): the `items` table already has a `kind` column
 - HTTPS elsewhere: set `HTTPS_ONLY=true` once served behind TLS (e.g. `tailscale serve` or a reverse proxy).
-  Uvicorn trusts the proxy's forwarded headers, so don't expose port 8000 directly to the internet.
+  Set `FORWARDED_ALLOW_IPS` to the proxy's address so uvicorn believes its `X-Forwarded-Proto`. The rate limits
+  take the client IP from uvicorn, so behind a proxy that appends to `X-Forwarded-For` (as Fly does) use a header
+  the proxy sets itself instead, like `client_ip()` does with Fly-Client-IP.
