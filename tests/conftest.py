@@ -14,6 +14,17 @@ from app.db import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Genre, Item, User, Vibe  # noqa: E402
 
+try:
+    import playwright  # noqa: F401
+except ImportError:  # browser tests need requirements-dev.txt; the rest run without them
+    collect_ignore = ["e2e"]
+
+
+def pytest_collection_modifyitems(items):
+    """Browser tests go last: Playwright leaves an event loop running in the main thread, which
+    breaks later tests that call asyncio.run()."""
+    items.sort(key=lambda item: "/e2e/" in item.nodeid)
+
 
 @pytest.fixture(autouse=True)
 def fresh_db():
