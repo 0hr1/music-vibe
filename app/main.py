@@ -652,7 +652,17 @@ async def prefill_album(request: Request, source: str, id: str, user: User = Dep
     except httpx.HTTPError:
         prefill = {}
     return render(request, "partials/album_fields.html", vibes=_user_vibes(db, user), prefill=prefill,
-                  album=None, lookup_failed=not prefill, refine=source == "deezer" and bool(prefill))
+                  album=None, lookup_failed=not prefill, refine=source == "deezer" and bool(prefill),
+                  owned=_owned_copy(db, user, prefill) if prefill else None)
+
+
+def _owned_copy(db: Session, user: User, info: dict) -> Item | None:
+    """The user's album that this search result is, by source id or by same title and artist."""
+    mine = select(Item).where(Item.user_id == user.id, Item.kind == "album")
+    if info.get("external_id") and (item := db.scalars(mine.where(Item.external_id == info["external_id"])).first()):
+        return item
+    wanted = (importer.norm(info.get("title") or ""), importer.norm(info.get("artist") or ""))
+    return next((i for i in db.scalars(mine) if (importer.norm(i.title), importer.norm(i.creator)) == wanted), None)
 
 
 @app.get("/albums/refine", response_class=HTMLResponse)
