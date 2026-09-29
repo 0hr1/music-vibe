@@ -6,15 +6,18 @@ all users together stay under what those services allow from one server."""
 
 import asyncio
 import time
-from collections import deque
+from collections import OrderedDict, deque
 
 import httpx
 
 
 class Limiter:
-    def __init__(self, limit: int, window: float):
-        self.limit, self.window = limit, window
-        self._hits: dict[str, deque[float]] = {}
+    """Keeps at most `max_keys` keys, forgetting the least recently hit first, so a flood of
+    new keys can't eat memory or make each hit slower."""
+
+    def __init__(self, limit: int, window: float, max_keys: int = 10_000):
+        self.limit, self.window, self.max_keys = limit, window, max_keys
+        self._hits: OrderedDict[str, deque[float]] = OrderedDict()
 
     def _recent(self, key: str) -> deque[float]:
         hits = self._hits.get(key)
@@ -31,12 +34,16 @@ class Limiter:
         return any(len(self._recent(k)) >= self.limit for k in keys)
 
     def hit(self, *keys: str) -> None:
-        if len(self._hits) > 10_000:  # forget keys whose window has passed
-            for k in list(self._hits):
-                self._recent(k)
         now = time.monotonic()
         for k in keys:
-            self._hits.setdefault(k, deque()).append(now)
+            hits = self._hits.get(k)
+            if hits is None:
+                hits = self._hits[k] = deque(maxlen=self.limit)  # older hits can't matter once it's full
+            else:
+                self._hits.move_to_end(k)
+            hits.append(now)
+        while len(self._hits) > self.max_keys:
+            self._hits.popitem(last=False)
 
     def reset(self, *keys: str) -> None:
         for k in keys:
@@ -64,13 +71,16 @@ class Throttle:
             await asyncio.sleep(slot - now)
 
 
-# Failed logins (also wrong "current password" on the account page)
+# Failed logins (also wrong "current password" on the account page). Per account, the tight limit
+# counts each IP separately, so a stranger can't lock the owner out from their own address; the
+# loose one caps guesses spread over many addresses.
 login_by_ip = Limiter(limit=20, window=15 * 60)
-login_by_user = Limiter(limit=10, window=15 * 60)
+login_by_user_ip = Limiter(limit=10, window=15 * 60)
+login_by_user = Limiter(limit=100, window=15 * 60)
 # Every sign-up attempt, successful or not (also bounds invite-code guessing)
 signup_by_ip = Limiter(limit=10, window=60 * 60)
 
 
 def clear_all() -> None:
-    for limiter in (login_by_ip, login_by_user, signup_by_ip):
+    for limiter in (login_by_ip, login_by_user_ip, login_by_user, signup_by_ip):
         limiter.clear()

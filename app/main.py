@@ -18,8 +18,9 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
 
 from . import backup, covers, deezer, importer, invites, musicbrainz, ratelimit, spotify
-from .auth import LoginRequired, admin_user, current_user, hash_password, is_admin, verify_password
-from .config import ALLOW_SIGNUP, COVERS_DIR, HTTPS_ONLY, SECRET_KEY, SESSION_MAX_AGE
+from .auth import (LoginRequired, admin_user, admins_named, check_login, current_user, hash_password, is_admin,
+                   is_reserved_admin_name, log_in, verify_password)
+from .config import ALLOW_SIGNUP, COVERS_DIR, HTTPS_ONLY, ON_FLY, SECRET_KEY, SESSION_MAX_AGE
 from .db import Base, engine, get_db
 from .models import Genre, InviteCode, Item, User, Vibe, item_genres
 
@@ -109,13 +110,36 @@ TOO_MANY = "Too many attempts. Wait a few minutes and try again."
 
 
 def client_ip(request: Request) -> str:
-    """The visitor's address (uvicorn takes it from the proxy's X-Forwarded-For)."""
-    return f"ip:{request.client.host if request.client else '?'}"
+    """The visitor's address. On Fly it's the Fly-Client-IP header, which Fly's proxy sets itself.
+    (X-Forwarded-For won't do there: Fly appends to whatever the client sent, so its first entry is
+    made up by the client.)"""
+    ip = request.headers.get("fly-client-ip") if ON_FLY else None
+    return f"ip:{ip or (request.client.host if request.client else '?')}"
+
+
+def _login_limits(request: Request, username: str) -> tuple[tuple[ratelimit.Limiter, str], ...]:
+    """The (limiter, key) pairs a wrong password counts against."""
+    name, ip = username.strip().lower()[:64], client_ip(request)
+    return ((ratelimit.login_by_ip, ip), (ratelimit.login_by_user_ip, f"user:{name}|{ip}"),
+            (ratelimit.login_by_user, f"user:{name}"))
+
+
+def _no_users(db: Session) -> bool:
+    return db.scalar(select(func.count(User.id))) == 0
 
 
 def signup_open(db: Session) -> bool:
-    """Open sign-up needs no invite code: when ALLOW_SIGNUP is on, or for the very first account."""
-    return ALLOW_SIGNUP or db.scalar(select(func.count(User.id))) == 0
+    """Whether the sign-up page can skip the invite code: ALLOW_SIGNUP is on, or it's the very first
+    account and ADMIN_USERNAMES doesn't say who that must be."""
+    return ALLOW_SIGNUP or (_no_users(db) and not admins_named())
+
+
+def needs_invite(db: Session, username: str) -> bool:
+    """With ADMIN_USERNAMES set, only a listed name can take the first account without a code, so a
+    stranger who finds a fresh public deploy first can't get in."""
+    if signup_open(db):
+        return False
+    return not (_no_users(db) and is_reserved_admin_name(username))
 
 
 # ---------- auth ----------
@@ -128,24 +152,29 @@ def login_page(request: Request, db: Session = Depends(get_db)):
 
 @app.post("/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
-    keys = (client_ip(request), f"user:{username.strip().lower()}")
-    if ratelimit.login_by_ip.blocked(keys[0]) or ratelimit.login_by_user.blocked(keys[1]):
+    limits = _login_limits(request, username)
+    if any(limiter.blocked(key) for limiter, key in limits):
         return render(request, "login.html", 429, error=TOO_MANY, username=username, needs_code=not signup_open(db))
     user = db.scalar(select(User).where(func.lower(User.username) == username.strip().lower()))
-    if not user or not verify_password(password, user.password_hash):
-        ratelimit.login_by_ip.hit(keys[0])
-        ratelimit.login_by_user.hit(keys[1])
+    if not check_login(user, password):
+        for limiter, key in limits:
+            limiter.hit(key)
         return render(request, "login.html", 401, error="Wrong username or password.",
                       username=username, needs_code=not signup_open(db))
-    ratelimit.login_by_user.reset(keys[1])
-    request.session.clear()
-    request.session["user_id"] = user.id
+    ratelimit.login_by_user_ip.reset(limits[1][1])
+    log_in(request, user)
     return redirect("/")
 
 
 @app.get("/register", response_class=HTMLResponse)
 def register_page(request: Request, code: str = "", db: Session = Depends(get_db)):
-    return render(request, "register.html", needs_code=not signup_open(db), code=invites.normalize(code))
+    return _register_form(request, db, code=code)
+
+
+def _register_form(request: Request, db: Session, status_code: int = 200, code: str = "", **ctx):
+    needs_code = not signup_open(db)
+    return render(request, "register.html", status_code, needs_code=needs_code, code=invites.normalize(code),
+                  admin_first=needs_code and _no_users(db), **ctx)
 
 
 @app.post("/register")
@@ -157,30 +186,31 @@ def register(
     code: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    needs_code = not signup_open(db)
-    if ratelimit.signup_by_ip.blocked(client_ip(request)):
-        return render(request, "register.html", 429, error=TOO_MANY, username=username, needs_code=needs_code,
-                      code=invites.normalize(code))
-    ratelimit.signup_by_ip.hit(client_ip(request))
-    invite = invites.find_usable(db, code) if needs_code else None
     username = username.strip()
+    if ratelimit.signup_by_ip.blocked(client_ip(request)):
+        return _register_form(request, db, 429, code=code, error=TOO_MANY, username=username)
+    ratelimit.signup_by_ip.hit(client_ip(request))
+    code_required = needs_invite(db, username)
+    # The code is checked before the name, so without one you can't find out which names exist.
+    invite = invites.find_usable(db, code) if code_required else None
     if not re.fullmatch(r"[A-Za-z0-9_.-]{2,32}", username):
         error = "Username: 2-32 letters, numbers, _ . or -"
-    elif db.scalar(select(User).where(func.lower(User.username) == username.lower())):
+    elif code_required and not invite:
+        error = "That invite code doesn't work. It may have expired or been used up."
+    elif (code_required and is_reserved_admin_name(username)) or db.scalar(
+            select(User).where(func.lower(User.username) == username.lower())):
         error = "That username is taken."
     else:
         error = _password_problem(password, password2)
-    if not error and needs_code and not (invite and invites.redeem(db, invite)):
+    if not error and code_required and not invites.redeem(db, invite):
         error = "That invite code doesn't work. It may have expired or been used up."
     if error:
         db.rollback()
-        return render(request, "register.html", 400, error=error, username=username, needs_code=needs_code,
-                      code=invites.normalize(code))
+        return _register_form(request, db, 400, code=code, error=error, username=username)
     user = User(username=username, password_hash=hash_password(password))
     db.add(user)
     db.commit()
-    request.session.clear()
-    request.session["user_id"] = user.id
+    log_in(request, user)
     return redirect("/vibes?welcome=1")
 
 
@@ -216,11 +246,12 @@ def change_password(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
-    key = f"user:{user.username.lower()}"
-    if ratelimit.login_by_user.blocked(key):
+    limits = _login_limits(request, user.username)
+    if any(limiter.blocked(key) for limiter, key in limits):
         error = TOO_MANY
     elif not verify_password(current, user.password_hash):
-        ratelimit.login_by_user.hit(key)
+        for limiter, key in limits:
+            limiter.hit(key)
         error = "Current password is wrong."
     else:
         error = _password_problem(password, password2)
@@ -228,6 +259,7 @@ def change_password(
         return render(request, "account.html", 400, user=user, error=error, admin=is_admin(db, user))
     user.password_hash = hash_password(password)
     db.commit()
+    log_in(request, user)  # the new password signs out every other session; keep this one
     return redirect("/account?saved=1")
 
 

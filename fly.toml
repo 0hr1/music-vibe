@@ -5,6 +5,8 @@ primary_region = "fra"      # pick the closest: `fly platform regions`
 [env]
   DATA_DIR = "/data"
   HTTPS_ONLY = "true"
+  # Trust Fly's proxy about the scheme (https). Rate limits use Fly-Client-IP, not X-Forwarded-For.
+  FORWARDED_ALLOW_IPS = "*"
 
 # Database, covers and session key live on this volume (one machine only: SQLite isn't shared).
 [mounts]
