@@ -368,7 +368,7 @@ def _admin_page(request: Request, db: Session, admin: User, status_code: int = 2
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page(request: Request, admin: User = Depends(admin_user), db: Session = Depends(get_db)):
-    return _admin_page(request, db, admin)
+    return _admin_page(request, db, admin, reset=request.session.pop("reset", None))
 
 
 @app.post("/admin/invites")
@@ -396,13 +396,16 @@ def _other_user(db: Session, admin: User, user_id: int) -> User:
     return target
 
 
-@app.post("/admin/users/{user_id}/reset-password", response_class=HTMLResponse)
+@app.post("/admin/users/{user_id}/reset-password")
 def reset_password(request: Request, user_id: int, admin: User = Depends(admin_user), db: Session = Depends(get_db)):
     target = _other_user(db, admin, user_id)
     temp = secrets.token_urlsafe(9)
     target.password_hash = hash_password(temp)
     db.commit()
-    return _admin_page(request, db, admin, reset=(target.username, temp))
+    # Shown once on the admin page. Not straight from this POST: reloading that would reset it again,
+    # and the password already sent on would stop working.
+    request.session["reset"] = (target.username, temp)
+    return redirect("/admin")
 
 
 @app.post("/admin/users/{user_id}/delete")
@@ -735,8 +738,18 @@ async def import_add(request: Request, user: User = Depends(current_user), db: S
         db.add(item)
         added.append(item)
     db.commit()
-    return render(request, "import_done.html", user=user, added=added, failed=failed,
-                  batch=f"{min(a.id for a in added)}-{max(a.id for a in added)}" if added else "")
+    # A page of its own, so reloading it doesn't send the form again (and add nothing)
+    batch = f"{min(a.id for a in added)}-{max(a.id for a in added)}" if added else ""
+    return redirect("/albums/import/done?" + urlencode({"batch": batch, "failed": failed}))
+
+
+@app.get("/albums/import/done", response_class=HTMLResponse)
+def import_done(request: Request, batch: str = "", failed: str = "", user: User = Depends(current_user),
+                db: Session = Depends(get_db)):
+    span = _span(batch)
+    added = db.scalars(select(Item).where(*_in_triage(user, span)).order_by(Item.id)).all() if span else []
+    return render(request, "import_done.html", user=user, added=added, failed=max(0, _int_or_none(failed) or 0),
+                  batch=batch if span else "")
 
 
 # ---------- triage: tagging albums one card at a time ----------

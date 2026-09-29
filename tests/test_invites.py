@@ -86,6 +86,8 @@ def test_admin_resets_password_and_deletes_user(client, db):
     temp = r.text.split('temporary password is <code class="secret">')[1].split("<")[0]
     db.expire_all()
     assert verify_password(temp, db.get(User, friend_id).password_hash)
+    assert r.url.path == "/admin"  # so a reload doesn't reset it again...
+    assert temp not in client.get("/admin").text  # ...and it's shown once
     client.post(f"/admin/users/{friend_id}/delete")
     db.expire_all()
     assert db.query(User).filter_by(id=friend_id).count() == 0 and db.query(Item).count() == 0

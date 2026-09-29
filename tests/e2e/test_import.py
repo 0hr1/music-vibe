@@ -44,6 +44,8 @@ def test_import_review_and_add(logged_in):
 
     expect(page.locator(".done-item")).to_have_count(1)
     expect(page.locator(".done-item")).to_contain_text("Long Season")
+    page.reload()  # doesn't post the form again
+    expect(page.locator(".done-item")).to_contain_text("Long Season")
     page.get_by_role("link", name="Go to library").click()
     expect(page.locator(".card")).to_have_count(1)
     expect(page.locator(".card")).to_contain_text("Fishmans · 1996")

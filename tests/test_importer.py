@@ -61,5 +61,7 @@ def test_import_review_and_add(client, monkeypatch, make_album, db):
     assert "Added 1 album." in r.text
     kid_a = db.query(Item).filter_by(title="Kid A").one()
     assert f'href="/triage?batch={kid_a.id}-{kid_a.id}"' in r.text
+    again = client.get(r.url)  # a reload shows the same, rather than posting the form again
+    assert "Added 1 album." in again.text and f'href="/triage?batch={kid_a.id}-{kid_a.id}"' in again.text
     titles = sorted(t for (t,) in db.query(Item.title).all())
     assert titles == ["Kid A", "Long Season"]
