@@ -1,4 +1,4 @@
-# Fly.io config. First deploy: see "Hosting on Fly.io" in the README.
+# Fly.io config. First deploy: see docs/hosting-on-fly.md.
 app = "music-vibe"          # must be unique across Fly; `fly launch` offers to rename it
 primary_region = "fra"      # pick the closest: `fly platform regions`
 
