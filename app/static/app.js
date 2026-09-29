@@ -65,10 +65,9 @@ document.addEventListener("click", (e) => {
     document.querySelectorAll("[data-select-mode][aria-pressed]").forEach((b) => b.setAttribute("aria-pressed", on));
     if (!on) document.querySelectorAll("#grid .select-box").forEach((b) => (b.checked = false));
     syncSelection();
-  } else if (e.target.closest("[data-select-all]")) {
-    const boxes = [...document.querySelectorAll("#grid .select-box")];
-    const all = boxes.every((b) => b.checked);
-    boxes.forEach((b) => (b.checked = !all));
+  } else if (e.target.closest("[data-select-all], [data-select-none]")) {
+    const on = !!e.target.closest("[data-select-all]");
+    document.querySelectorAll("#grid .select-box").forEach((b) => (b.checked = on));
     syncSelection();
   } else if (library.classList.contains("selecting")) {
     const card = e.target.closest("#grid .card");
