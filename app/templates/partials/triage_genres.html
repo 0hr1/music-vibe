@@ -6,7 +6,7 @@ MusicBrainz for better ones as soon as it loads. -#}
     {% for g in album.genres|sort(attribute="name") %}
     <li class="genre-chip">{{ g.name }}<button type="button" aria-label="Remove {{ g.name }}" data-save
         hx-post="/triage/{{ album.id }}/genres" hx-vals='{"remove": {{ g.name|tojson }}}'
-        hx-target="#triage-genres" hx-swap="outerHTML">×</button></li>
+        hx-target="#triage-genres" hx-swap="outerHTML" hx-sync="closest fieldset:queue all">×</button></li>
     {% endfor %}
   </ul>
   {% else %}

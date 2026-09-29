@@ -106,9 +106,12 @@ document.addEventListener("submit", (e) => {
     if (e.detail.elt?.closest?.("[data-save]")) saving.add(e.detail.xhr);
   });
   document.addEventListener("htmx:afterRequest", (e) => {
-    if (!saving.delete(e.detail.xhr) || saving.size) return;
-    waiting.forEach((go) => go());
-    waiting = [];
+    if (!saving.delete(e.detail.xhr)) return;
+    setTimeout(() => {  // htmx starts a save queued behind this one just after it ends
+      if (saving.size) return;
+      waiting.forEach((go) => go());
+      waiting = [];
+    });
   });
 
   const go = (dir) => {

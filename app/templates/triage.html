@@ -43,7 +43,7 @@
         <legend>Genres</legend>
         {% with refine = not album.genres_checked %}{% include "partials/triage_genres.html" %}{% endwith %}
         <form class="row triage-add-genre" hx-post="/triage/{{ album.id }}/genres" hx-target="#triage-genres"
-              hx-swap="outerHTML" hx-on::after-request="if (event.detail.successful) this.reset()" data-save>
+              hx-swap="outerHTML" hx-sync="closest fieldset:queue all" hx-on::after-request="if (event.detail.successful) this.reset()" data-save>
           <input name="add" list="known-genres" placeholder="add a genre" aria-label="Add a genre" autocomplete="off">
           <button class="btn" type="submit">Add</button>
         </form>
