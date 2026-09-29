@@ -9,10 +9,14 @@ os.environ["SPOTIFY_CLIENT_SECRET"] = ""
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import ratelimit  # noqa: E402
+from app import auth, ratelimit  # noqa: E402
 from app.db import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Genre, Item, User, Vibe  # noqa: E402
+
+# Real password hashing is slow on purpose (~60ms), and nearly every test registers or logs in.
+# Stored hashes carry their own cost, so this only changes hashes made during tests.
+auth._N = 2**4
 
 try:
     import playwright  # noqa: F401
@@ -22,7 +26,8 @@ except ImportError:  # browser tests need requirements-dev.txt; the rest run wit
 
 def pytest_collection_modifyitems(items):
     """Browser tests go last: Playwright leaves an event loop running in the main thread, which
-    breaks later tests that call asyncio.run()."""
+    breaks later tests that call asyncio.run(). With pytest-xdist each worker gets its share of
+    this list in order, so browser tests still come last on each worker."""
     items.sort(key=lambda item: "/e2e/" in item.nodeid)
 
 
