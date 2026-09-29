@@ -439,8 +439,10 @@ def library(
         .order_by(func.count().desc(), Genre.name)
     ).all()
     years = db.execute(select(func.min(Item.year), func.max(Item.year)).where(Item.user_id == user.id)).one()
+    untagged = db.scalar(select(func.count(Item.id)).where(Item.user_id == user.id, Item.kind == "album",
+                                                          ~Item.vibes.any()))
     return render(
-        request, "library.html", user=user, vibes=vibes, genres=genres, years=years,
+        request, "library.html", user=user, vibes=vibes, genres=genres, years=years, untagged=untagged,
         f=dict(q=q, vibe=vibe, genre=genre, year_min=ymin, year_max=ymax, sort=sort, order=order),
         **ctx,
     )
@@ -696,45 +698,102 @@ async def import_add(request: Request, user: User = Depends(current_user), db: S
         added.append(item)
     db.commit()
     return render(request, "import_done.html", user=user, added=added, failed=failed,
-                  triage_ids=",".join(str(item.id) for item in added))
+                  batch=f"{min(a.id for a in added)}-{max(a.id for a in added)}" if added else "")
 
 
-# ---------- triage: one album at a time, for tagging a fresh import ----------
+# ---------- triage: tagging albums one card at a time ----------
+# Which albums a triage goes through is a rule, not a stored list: every album without vibes, or, with
+# `batch=<first id>-<last id>`, the albums one import added. Cards go in the order albums were added,
+# and the URL names the album on screen, so a triage can be left and picked up again any time.
 
-MAX_TRIAGE = 500
 _lookups: dict[int, asyncio.Task] = {}  # MusicBrainz lookups under way, by album id
+Span = tuple[int, int] | None  # an import's first and last album id; None means "albums without vibes"
 
 
-def _triage_ids(raw: str) -> list[int]:
-    ids = [int(part) for part in raw.split(",") if part.strip().isdigit()]
-    return list(dict.fromkeys(ids))[:MAX_TRIAGE]
+def _span(batch: str) -> Span:
+    m = re.fullmatch(r"(\d{1,9})-(\d{1,9})", batch)
+    return (int(m[1]), int(m[2])) if m else None
 
 
-def _triage_url(ids: list[int], i: int) -> str:
-    return f"/triage?ids={','.join(map(str, ids))}&i={i}"
+def _in_triage(user: User, span: Span) -> list:
+    where = [Item.user_id == user.id, Item.kind == "album"]
+    return where + [Item.id.between(*span) if span else ~Item.vibes.any()]
 
 
-@app.get("/triage", response_class=HTMLResponse)
-def triage_page(request: Request, ids: str = "", i: int = 0, user: User = Depends(current_user),
+def _count(db: Session, *where) -> int:
+    return db.scalar(select(func.count(Item.id)).where(*where))
+
+
+def _neighbour(db: Session, user: User, span: Span, album_id: int, after: bool) -> Item | None:
+    side = Item.id > album_id if after else Item.id < album_id
+    return db.scalars(select(Item).where(*_in_triage(user, span), side)
+                      .order_by(Item.id if after else Item.id.desc()).limit(1)).first()
+
+
+def _triage_url(album_id: int | None, span: Span) -> str:
+    query = f"?batch={span[0]}-{span[1]}" if span else ""
+    return f"/triage/{album_id}{query}" if album_id else f"/triage/done{query}"
+
+
+@app.get("/triage")
+def triage_start(batch: str = "", ids: str = "", i: int = 0, user: User = Depends(current_user),
+                 db: Session = Depends(get_db)):
+    """Pick up where you left off: the first album still without vibes (in the batch, if one is given).
+    Also turns the long `?ids=1,2,3&i=4` links triage used to have into the short kind."""
+    if ids:
+        wanted = [int(n) for n in ids.split(",") if n.strip().isdigit()]
+        mine = set(db.scalars(select(Item.id).where(Item.user_id == user.id, Item.id.in_(wanted))))
+        wanted = [n for n in wanted if n in mine]
+        if not wanted:
+            return redirect(_triage_url(None, None))
+        return redirect(_triage_url(wanted[max(0, min(i, len(wanted) - 1))], (min(wanted), max(wanted))))
+    span = _span(batch)
+    first = db.scalar(select(func.min(Item.id)).where(*_in_triage(user, span), ~Item.vibes.any()))
+    return redirect(_triage_url(first, span))
+
+
+def _known_genres(db: Session, user: User) -> list[str]:
+    return db.scalars(select(Genre.name).join(Item.genres).where(Item.user_id == user.id)
+                      .group_by(Genre.name).order_by(Genre.name)).all()
+
+
+@app.get("/triage/done", response_class=HTMLResponse)
+def triage_done(request: Request, batch: str = "", user: User = Depends(current_user),
                 db: Session = Depends(get_db)):
-    """The album at position `i` of the batch. Albums deleted since drop out of the batch."""
-    wanted = _triage_ids(ids)
-    mine = {item.id: item for item in db.scalars(
-        select(Item).where(Item.user_id == user.id, Item.id.in_(wanted))
-        .options(selectinload(Item.vibes), selectinload(Item.genres)))}
-    batch = [n for n in wanted if n in mine]
-    i = max(0, min(i, len(batch)))
-    album = mine[batch[i]] if i < len(batch) else None
-    upcoming = mine[batch[i + 1]] if i + 1 < len(batch) else None
-    tagged = sum(1 for item in mine.values() if item.vibes and item is not album)  # the card counts itself live
-    return render(
-        request, "triage.html", user=user, album=album, i=i, total=len(batch), tagged=tagged,
-        vibes=(vibes := _user_vibes(db, user)), suggested_color=_unused_color(vibes), prev_url=_triage_url(batch, i - 1) if i else None,
-        next_url=_triage_url(batch, i + 1), ids=",".join(map(str, batch)),
-        prefetch=upcoming.id if upcoming and not upcoming.genres_checked else None,
-        known_genres=db.scalars(select(Genre.name).join(Item.genres).where(Item.user_id == user.id)
-                                .group_by(Genre.name).order_by(Genre.name)).all(),
+    span = _span(batch)
+    mine = _in_triage(user, span)
+    untagged = _count(db, Item.user_id == user.id, Item.kind == "album", ~Item.vibes.any())
+    last = _neighbour(db, user, span, 2**31, after=False) if span else None
+    return render(request, "triage.html", user=user, album=None, span=span, untagged=untagged,
+                  total=_count(db, *mine), tagged=_count(db, *mine, Item.vibes.any()),
+                  prev_url=_triage_url(last.id, span) if last else None)
+
+
+@app.get("/triage/{album_id}", response_class=HTMLResponse)
+def triage_card(request: Request, album_id: int, batch: str = "", user: User = Depends(current_user),
+                db: Session = Depends(get_db)):
+    span = _span(batch)
+    album = db.get(Item, album_id)
+    if not album or album.user_id != user.id:  # e.g. removed, then reached with the browser's back button
+        return redirect(_triage_url(getattr(_neighbour(db, user, span, album_id, after=True), "id", None), span))
+    upcoming = _neighbour(db, user, span, album.id, after=True)
+    earlier = _neighbour(db, user, span, album.id, after=False)
+    mine, others = _in_triage(user, span), Item.id != album.id
+    if span:  # the card itself is counted live, as its vibes are ticked
+        progress = dict(position=_count(db, *mine, Item.id <= album.id), total=_count(db, *mine),
+                        tagged_others=_count(db, *mine, others, Item.vibes.any()))
+    else:
+        progress = dict(left_others=_count(db, *mine, others))
+    response = render(
+        request, "triage.html", user=user, album=album, span=span, batch=batch if span else "",
+        vibes=(vibes := _user_vibes(db, user)), suggested_color=_unused_color(vibes),
+        prev_url=_triage_url(earlier.id, span) if earlier else None,
+        next_url=_triage_url(getattr(upcoming, "id", None), span),
+        last=upcoming is None, prefetch=upcoming.id if upcoming and not upcoming.genres_checked else None,
+        known_genres=_known_genres(db, user), **progress,
     )
+    response.headers["Cache-Control"] = "no-store"  # Back must show the vibes as saved, not a cached copy
+    return response
 
 
 # Colours a vibe made on the fly gets, in order, skipping ones already in use
@@ -832,14 +891,15 @@ async def triage_refine(request: Request, album_id: int, user: User = Depends(cu
 
 
 @app.post("/triage/{album_id}/delete")
-def triage_delete(album_id: int, ids: str = Form(""), i: int = Form(0), user: User = Depends(current_user),
+def triage_delete(album_id: int, batch: str = Form(""), user: User = Depends(current_user),
                   db: Session = Depends(get_db)):
-    """Remove an album from the library and carry on with the batch (the next album moves up to `i`)."""
-    item = _get_album(db, user, album_id)
+    """Remove an album from the library and carry on with the next one."""
+    item, span = _get_album(db, user, album_id), _span(batch)
+    upcoming = _neighbour(db, user, span, album_id, after=True)
     covers.delete(item.cover_file)
     db.delete(item)
     db.commit()
-    return redirect(_triage_url(_triage_ids(ids), i))
+    return redirect(_triage_url(getattr(upcoming, "id", None), span))
 
 
 @app.post("/albums")

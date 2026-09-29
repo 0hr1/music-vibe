@@ -51,3 +51,12 @@ def test_bulk_add_vibe(logged_in, make_album, make_vibe):
     expect(page.locator(".card:has-text('One') .chip")).to_have_text("winter")
     expect(page.locator(".card:has-text('Three') .chip")).to_have_text("winter")
     expect(page.locator(".card:has-text('Two') .chip")).to_have_count(0)
+
+
+def test_library_fits_a_phone(logged_in, make_album):
+    make_album("Untagged")  # so every toolbar button shows
+    page = logged_in
+    page.set_viewport_size({"width": 360, "height": 740})
+    page.goto("/")
+    expect(page.get_by_role("link", name="+ Add album")).to_be_visible()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")  # no sideways scrolling

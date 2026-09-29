@@ -114,10 +114,22 @@ document.addEventListener("submit", (e) => {
     });
   });
 
+  // Came here from another card? Then Back can simply go back in the browser's history.
+  const fromCard = (() => {
+    try {
+      const from = new URL(document.referrer);
+      return from.origin === location.origin && /^\/triage\/\d+$/.test(from.pathname);
+    } catch { return false; }
+  })();
+  if (fromCard) document.querySelectorAll("[data-history]").forEach((link) => (link.hidden = false));
+
   const go = (dir) => {
-    const link = document.querySelector(`[data-triage-nav="${dir}"]`);
+    const link = document.querySelector(`[data-triage-nav="${dir}"]:not([hidden])`);
     if (!link) return;
-    const leave = () => { location.href = link.href; };
+    const leave = () => {
+      if (link.dataset.history !== undefined && fromCard) history.back();
+      else location.href = link.href;
+    };
     if (saving.size) waiting.push(leave); else leave();
   };
 
@@ -167,6 +179,10 @@ document.addEventListener("submit", (e) => {
     const bar = document.querySelector(".triage-progress");
     if (!bar) return;
     const here = document.querySelector("[data-triage-card] input[name=vibes]:checked") ? 1 : 0;
+    if (bar.dataset.leftOthers !== undefined) {  // going through albums without vibes
+      bar.querySelector("[data-left]").textContent = Number(bar.dataset.leftOthers) + 1 - here;
+      return;
+    }
     const tagged = Number(bar.dataset.taggedOthers) + here;
     bar.querySelector("[data-tagged]").textContent = tagged;
     bar.querySelector("[data-left]").textContent = Number(bar.dataset.total) - tagged;

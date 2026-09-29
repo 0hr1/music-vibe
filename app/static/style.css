@@ -264,7 +264,7 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
 .genre-list { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow: auto; padding: 6px; background: var(--field); box-shadow: var(--sunken); }
 .genre-list .check { font-size: 13px; }
 
-.toolbar { display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 10px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-bottom: 10px; }
 .only-mobile { display: none; }
 
 .status-bar {

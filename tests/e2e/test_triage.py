@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from playwright.sync_api import expect
 
@@ -75,7 +77,7 @@ def test_import_then_tag(logged_in, db):
     page.keyboard.press("ArrowRight")
     expect(page.get_by_role("link", name="Finish →")).to_be_visible()
     page.keyboard.press("Enter")
-    expect(page.get_by_text("That's all 2 albums.")).to_be_visible()
+    expect(page.get_by_text("That's all 2 albums from this import.")).to_be_visible()
     expect(page.get_by_text("1 of them has vibes now.")).to_be_visible()
 
 
@@ -84,7 +86,7 @@ def test_moving_on_waits_for_the_save(logged_in, make_album, db):
     page = logged_in
     held = []
     page.route("**/triage/*/vibes", lambda route: held.append(route))  # hold the save until we let it go
-    page.goto(f"/triage?ids={a.id},{b.id}")
+    page.goto(f"/triage/{a.id}?batch={a.id}-{b.id}")
     expect(page.get_by_role("heading", name="Slow")).to_be_visible()
     _vibe(page, "summer").click()
     while not held:
@@ -101,7 +103,7 @@ def test_moving_on_waits_for_the_save(logged_in, make_album, db):
 def test_new_vibe_on_the_card(logged_in, make_album, db):
     a, b = make_album("First", genres_checked=True), make_album("Second", genres_checked=True)
     page = logged_in
-    page.goto(f"/triage?ids={a.id},{b.id}")
+    page.goto(f"/triage/{a.id}?batch={a.id}-{b.id}")
     _vibe(page, "fall").click()
     new = page.get_by_role("button", name="+ new vibe")
     new.click()
@@ -130,7 +132,7 @@ def test_edit_genres(logged_in, make_album, db):
     a = make_album("Album", genres=["pop", "rock"], genres_checked=True)
     b = make_album("After", genres_checked=True)
     page = logged_in
-    page.goto(f"/triage?ids={a.id},{b.id}")
+    page.goto(f"/triage/{a.id}?batch={a.id}-{b.id}")
     page.get_by_role("button", name="Remove pop").click()
     expect(page.locator(".genre-chip")).to_have_text(["rock×"])
     box = page.get_by_role("combobox", name="Add a genre")
@@ -149,7 +151,7 @@ def test_edit_genres(logged_in, make_album, db):
 def test_remove_from_library(logged_in, make_album, db):
     a, b = make_album("Wrong match").id, make_album("Keeper").id
     page = logged_in
-    page.goto(f"/triage?ids={a},{b}")
+    page.goto(f"/triage/{a}?batch={a}-{b}")
     page.once("dialog", lambda d: d.accept())
     page.get_by_role("button", name="Remove from library").click()
     expect(page.get_by_role("heading", name="Keeper")).to_be_visible()
@@ -169,7 +171,7 @@ def test_swipe_on_a_phone(browser, base_url, user, make_album, db):
     page.fill("input[name=password]", "password1")
     page.click("button[type=submit]")
     page.wait_for_url("**/")
-    page.goto(f"/triage?ids={a.id},{b.id}")
+    page.goto(f"/triage/{a.id}?batch={a.id}-{b.id}")
     _vibe(page, "spring").tap()
     expect(_vibe(page, "spring")).to_be_checked()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")  # no sideways scrolling
@@ -223,7 +225,7 @@ def test_every_card_action_then_straight_to_next(logged_in, make_album, make_vib
     a = make_album("This", genres=["pop"], genres_checked=True, vibes=[make_vibe("fall")])
     b = make_album("Next one", genres_checked=True)
     page = logged_in
-    page.goto(f"/triage?ids={a.id},{b.id}")
+    page.goto(f"/triage/{a.id}?batch={a.id}-{b.id}")
     do(page)
     if action in ("add genre", "new vibe"):  # ends typing in a box, where → moves the text cursor
         page.get_by_role("link", name="Next →").click()
@@ -234,3 +236,41 @@ def test_every_card_action_then_straight_to_next(logged_in, make_album, make_vib
     item = db.get(Item, a.id)
     got = {"vibes": [v.name for v in item.vibes], "genres": sorted(g.name for g in item.genres)}
     assert {k: got[k] for k in want} == want
+
+
+def test_finish_later_from_the_library(logged_in, make_album, make_vibe):
+    make_album("Already done", genres_checked=True, vibes=[make_vibe("winter")])
+    for title in ("A", "B", "C"):
+        make_album(title, genres_checked=True)
+    page = logged_in
+    page.goto("/")
+    page.get_by_role("link", name="🏷 Tag 3 untagged").click()
+
+    expect(page.get_by_role("heading", name="A")).to_be_visible()
+    expect(page).to_have_url(re.compile(r"/triage/\d+$"))  # short, and names the album
+    back, left = page.get_by_role("link", name="← Back"), page.locator("[data-left]")
+    expect(back).to_be_hidden()  # first card
+    expect(left).to_have_text("3")
+    _vibe(page, "fall").click()
+    expect(left).to_have_text("2")
+    page.keyboard.press("ArrowRight")
+
+    expect(page.get_by_role("heading", name="B")).to_be_visible()  # skips "Already done"
+    expect(left).to_have_text("2")
+    expect(back).to_be_visible()
+    page.keyboard.press("ArrowLeft")  # back to A, although it has vibes now
+    expect(page.get_by_role("heading", name="A")).to_be_visible()
+    expect(_vibe(page, "fall")).to_be_checked()
+    page.keyboard.press("ArrowRight")
+    expect(page.get_by_role("heading", name="B")).to_be_visible()
+    _vibe(page, "spring").click()
+    expect(left).to_have_text("1")
+
+    page.get_by_role("link", name="Library").click()  # finish later
+    page.get_by_role("link", name="🏷 Tag 1 untagged").click()
+    expect(page.get_by_role("heading", name="C")).to_be_visible()
+    _vibe(page, "summer").click()
+    page.get_by_role("link", name="Finish →").click()
+    expect(page.get_by_text("Every album has vibes.")).to_be_visible()
+    page.get_by_role("link", name="Go to library").click()
+    expect(page.get_by_role("link", name=re.compile("untagged"))).to_have_count(0)

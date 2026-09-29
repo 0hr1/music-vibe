@@ -25,19 +25,61 @@ def fake_mb(monkeypatch):
     return Fake
 
 
-def test_page_walks_the_batch(client, make_album):
+def _location(r):
+    assert r.status_code == 303, r.status_code
+    return r.headers["location"]
+
+
+def test_batch_walks_the_import_in_order(client, make_album):
     a, b = make_album("Alpha", "Artist A", 1999), make_album("Beta", "Artist B")
-    ids = f"{a.id},{b.id}"
-    r = client.get(f"/triage?ids={ids}")
-    assert "Alpha" in r.text and "Beta" not in r.text and "<b>1</b> of 2" in r.text
-    assert f'href="/triage?ids={ids}&amp;i=1"' in r.text  # next
-    r = client.get(f"/triage?ids={ids}&i=1")
-    assert "Beta" in r.text and "Finish →" in r.text
-    r = client.get(f"/triage?ids={ids}&i=2")
-    assert "That's all 2 albums." in r.text
+    batch = f"{a.id}-{b.id}"
+    assert _location(client.get(f"/triage?batch={batch}", follow_redirects=False)) == f"/triage/{a.id}?batch={batch}"
+    r = client.get(f"/triage/{a.id}?batch={batch}")
+    assert "Alpha" in r.text and "Album <b>1</b> of 2" in r.text and "0</b> tagged" in r.text
+    assert f'href="/triage/{b.id}?batch={batch}"' in r.text  # next
+    r = client.get(f"/triage/{b.id}?batch={batch}")
+    assert "Beta" in r.text and "Finish →" in r.text and f'href="/triage/done?batch={batch}"' in r.text
+    r = client.get(f"/triage/done?batch={batch}")
+    assert "all 2 albums from this import" in r.text and "Tag all 2 without vibes" in r.text
 
 
-def test_page_skips_missing_and_other_users_albums(client, make_album, db):
+def test_batch_resumes_at_the_first_album_without_vibes(client, make_album, make_vibe):
+    winter = make_vibe("winter")
+    a, b, c = make_album("A", vibes=[winter]), make_album("B"), make_album("C")
+    r = client.get(f"/triage?batch={a.id}-{c.id}", follow_redirects=False)
+    assert _location(r) == f"/triage/{b.id}?batch={a.id}-{c.id}"
+    r = client.get(f"/triage/{b.id}?batch={a.id}-{c.id}")
+    assert "Album <b>2</b> of 3" in r.text and "1</b> tagged" in r.text  # tagged albums stay in a batch
+    assert f'href="/triage/{a.id}?batch={a.id}-{c.id}"' in r.text  # back
+
+
+def test_untagged_goes_through_albums_without_vibes(client, make_album, make_vibe):
+    winter = make_vibe("winter")
+    a, b, c = make_album("A"), make_album("B", vibes=[winter]), make_album("C")
+    assert _location(client.get("/triage", follow_redirects=False)) == f"/triage/{a.id}"
+    r = client.get(f"/triage/{a.id}")
+    assert "<b data-left>2</b> left" in r.text
+    assert f'href="/triage/{c.id}"' in r.text  # skips B, which has vibes
+    assert "data-history hidden" in r.text  # nothing before it: Back only via the browser's history
+    r = client.get(f"/triage/{c.id}")
+    assert "Finish →" in r.text and 'href="/triage/done"' in r.text
+    r = client.get("/triage/done")
+    assert "2 albums still have" in r.text and "Start again →" in r.text
+
+
+def test_nothing_to_tag(client, make_album, make_vibe):
+    make_album("A", vibes=[make_vibe("winter")])
+    assert _location(client.get("/triage", follow_redirects=False)) == "/triage/done"
+    assert "Every album has vibes." in client.get("/triage/done").text
+
+
+def test_old_long_links_still_work(client, make_album):
+    a, b, c = make_album("A"), make_album("B"), make_album("C")
+    r = client.get(f"/triage?ids={a.id},{b.id},{c.id}&i=1", follow_redirects=False)
+    assert _location(r) == f"/triage/{b.id}?batch={a.id}-{c.id}"
+
+
+def test_other_users_albums_are_never_shown(client, make_album, db):
     other = User(username="other", password_hash="x")
     db.add(other)
     db.commit()
@@ -45,9 +87,18 @@ def test_page_skips_missing_and_other_users_albums(client, make_album, db):
     db.add(theirs)
     db.commit()
     mine = make_album("Mine")
-    r = client.get(f"/triage?ids={theirs.id},99999,{mine.id}")
-    assert "Mine" in r.text and "Theirs" not in r.text and "<b>1</b> of 1" in r.text
-    assert "nothing here to tag" in client.get("/triage").text
+    lo, hi = sorted((theirs.id, mine.id))
+    r = client.get(f"/triage/{mine.id}?batch={lo}-{hi}")
+    assert "Album <b>1</b> of 1" in r.text and "Theirs" not in r.text
+    assert "Theirs" not in client.get(f"/triage/{theirs.id}").text  # moves on instead
+
+
+def test_library_offers_to_tag_albums_without_vibes(client, make_album, make_vibe):
+    make_album("A", vibes=[make_vibe("winter")])
+    assert "untagged" not in client.get("/").text
+    make_album("B")
+    make_album("C")
+    assert "Tag 2 untagged" in client.get("/").text
 
 
 def test_set_vibes(client, make_album, make_vibe, db):
@@ -135,20 +186,21 @@ def test_card_and_prefetch_share_one_lookup(monkeypatch):
 
 def test_page_prefetches_next_unchecked_album(client, make_album):
     a, b = make_album("A"), make_album("B")
-    r = client.get(f"/triage?ids={a.id},{b.id}")
+    r = client.get(f"/triage/{a.id}")
     assert f'hx-post="/triage/{a.id}/refine"' in r.text  # the card itself
     assert f'hx-post="/triage/{b.id}/refine" hx-trigger="load delay' in r.text
-    r = client.get(f"/triage?ids={a.id},{b.id}&i=1")
-    assert "delay:500ms" not in r.text  # last album: nothing to prefetch
+    assert "delay:500ms" not in client.get(f"/triage/{b.id}").text  # last album: nothing to prefetch
 
 
 def test_remove_moves_on_to_the_next_album(client, make_album, db):
     a, b = make_album("A").id, make_album("B").id
-    r = client.post(f"/triage/{a}/delete", data={"ids": f"{a},{b}", "i": "0"}, follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == f"/triage?ids={a},{b}&i=0"
+    r = client.post(f"/triage/{a}/delete", data={"batch": f"{a}-{b}"}, follow_redirects=False)
+    assert _location(r) == f"/triage/{b}?batch={a}-{b}"
     db.expire_all()
     assert db.get(Item, a) is None
     assert "<h2>B</h2>" in client.get(r.headers["location"]).text
+    # the removed album's page (e.g. reached with the browser's back button) moves on too
+    assert _location(client.get(f"/triage/{a}?batch={a}-{b}", follow_redirects=False)) == f"/triage/{b}?batch={a}-{b}"
 
 
 def test_cannot_triage_other_users_albums(client, db):
