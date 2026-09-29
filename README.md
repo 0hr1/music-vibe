@@ -34,7 +34,9 @@ their library as CSV from the Stats page.
 
 ## Hosting on Fly.io
 
-`fly.toml` runs the same Docker image on one small machine with a volume for `/data`. HTTPS comes
+New to Fly? [docs/hosting-on-fly.md](docs/hosting-on-fly.md) walks through everything step by step (sign-up,
+billing, custom domain, moving your library over). The short version: `fly.toml` runs the same Docker
+image on one small machine with a volume for `/data`. HTTPS comes
 built in (`https://<app>.fly.dev`). Install `flyctl` and run `fly auth login`, then from this folder:
 
 ```sh
