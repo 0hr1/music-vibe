@@ -47,8 +47,11 @@
         <select name="order" aria-label="Order">
           <option value="desc" {% if f.order == 'desc' %}selected{% endif %}>↓ Desc</option>
           <option value="asc" {% if f.order == 'asc' %}selected{% endif %}>↑ Asc</option>
+          <option value="random" {% if f.order == 'random' %}selected{% endif %}>🔀 Random</option>
         </select>
+        <input type="hidden" name="seed" value="{{ f.seed }}">
       </div>
+      <button class="btn shuffle" type="button" data-shuffle>🔀 Shuffle</button>
     </fieldset>
 
     {% if genres %}

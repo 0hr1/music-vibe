@@ -214,3 +214,18 @@ document.addEventListener("submit", (e) => {
     if (e.persisted && document.querySelector("[data-triage-card]")) location.reload();
   });
 }
+
+// Random order: a new seed each time Random is picked or Shuffle is pressed (the seed rides along
+// in the URL so the order holds until then). Capture phase, so it's set before htmx reads the form.
+function newSeed(form) {
+  form.querySelector("input[name=seed]").value = Math.floor(Math.random() * 1e9);
+}
+document.addEventListener("change", (e) => {
+  if (e.target.matches?.("#filter-form select[name=order]") && e.target.value === "random") newSeed(e.target.form);
+}, true);
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-shuffle]");
+  if (!btn) return;
+  newSeed(btn.form);
+  htmx.trigger(btn.form, "change");
+});

@@ -1,3 +1,5 @@
+import re
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -50,3 +52,19 @@ def test_new_account_lands_on_library_with_season_vibes(db):
     r = TestClient(app).post("/register", data={"username": "new", "password": "password1", "password2": "password1"})
     assert r.url.path == "/" and "Your library is empty" in r.text
     assert [v.name for v in db.query(Vibe).order_by(Vibe.id)] == ["winter", "spring", "summer", "fall"]
+
+
+def test_random_order_holds_for_a_seed(client, make_album):
+    titles = [f"Album {i}" for i in range(12)]
+    for t in titles:
+        make_album(t)
+
+    def order(**params):
+        html = client.get("/", params=params, headers={"HX-Request": "true"}).text
+        return re.findall(r'class="card-title"[^>]*>([^<]+)<', html)
+
+    first = order(order="random", seed="123")
+    assert sorted(first) == sorted(titles)
+    assert first == order(order="random", seed="123")  # same seed, same order
+    assert first != order(order="random", seed="456")
+    assert order(order="random", seed="nonsense")  # a bad seed still lists everything, shuffled
