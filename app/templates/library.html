@@ -76,6 +76,7 @@
   {% call window("My Albums", "📀", cls="albums") %}
   <div class="toolbar">
     <button class="btn only-mobile" type="button" data-open-filters>🔍 Filters</button>
+    {% include "partials/untagged_button.html" %}
     {% if total %}<button class="btn" type="button" data-select-mode aria-pressed="false">☑ Select</button>{% endif %}
     <a class="btn" href="/albums/new">+ Add album</a>
   </div>

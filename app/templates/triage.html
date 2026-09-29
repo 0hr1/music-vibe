@@ -5,11 +5,19 @@
 <div class="page triage">
   {% if album %}
   {% call window("Tag Albums", "🏷️") %}
-  {%- set done = tagged + (1 if album.vibes else 0) %}
-  <div class="status-bar triage-progress" data-total="{{ total }}" data-tagged-others="{{ tagged }}">
-    <span>Album <b>{{ i + 1 }}</b> of {{ total }}</span>
+  {#- The card's own album is counted in the browser, as its vibes are ticked (see app.js). -#}
+  {% if span %}
+  {%- set done = tagged_others + (1 if album.vibes else 0) %}
+  <div class="status-bar triage-progress" data-total="{{ total }}" data-tagged-others="{{ tagged_others }}">
+    <span>Album <b>{{ position }}</b> of {{ total }}</span>
     <span><b data-tagged>{{ done }}</b> tagged · <b data-left>{{ total - done }}</b> left</span>
   </div>
+  {% else %}
+  <div class="status-bar triage-progress" data-left-others="{{ left_others }}">
+    <span>Albums without vibes</span>
+    <span><b data-left>{{ left_others + (0 if album.vibes else 1) }}</b> left</span>
+  </div>
+  {% endif %}
   <article class="triage-card" data-triage-card>
     <div class="cover big">
       {% if album.cover_file %}<img src="/covers/{{ album.cover_file }}" alt="">
@@ -41,28 +49,35 @@
   </article>
 
   <div class="triage-nav">
-    {% if prev_url %}<a class="btn" href="{{ prev_url }}" data-triage-nav="prev">← Back</a>{% endif %}
+    {#- Without a batch, albums you tag leave the list, so app.js points Back at the card you saw before. -#}
+    {% if span %}{% if prev_url %}<a class="btn" href="{{ prev_url }}" data-triage-nav="prev">← Back</a>{% endif %}
+    {% else %}<a class="btn" href="/triage" data-triage-nav="prev" data-history hidden>← Back</a>{% endif %}
     <form method="post" action="/triage/{{ album.id }}/delete" data-confirm-remove="{{ album.title }}">
-      <input type="hidden" name="ids" value="{{ ids }}"><input type="hidden" name="i" value="{{ i }}">
+      <input type="hidden" name="batch" value="{{ batch }}">
       <button class="btn danger" type="submit">Remove<span class="not-mobile"> from library</span></button>
     </form>
     <span class="spacer"></span>
-    <a class="btn primary" href="{{ next_url }}" data-triage-nav="next">{{ "Next →" if i + 1 < total else "Finish →" }}</a>
+    <a class="btn primary" href="{{ next_url }}" data-triage-nav="next">{{ "Finish →" if last else "Next →" }}</a>
   </div>
   <p class="muted triage-keys">Keys: <kbd>→</kbd> or <kbd>Enter</kbd> next · <kbd>←</kbd> back</p>
   {% if prefetch %}<div hidden hx-post="/triage/{{ prefetch }}/refine" hx-trigger="load delay:500ms" hx-swap="none"></div>{% endif %}
   {% endcall %}
 
   {% else %}
-  {% call window("All Tagged", "✅") %}
+  {% call window("Done", "✅") %}
   <div class="stack">
-    {% if total %}
-    <p><b>That's all {{ total }} album{{ '' if total == 1 else 's' }}.</b> {{ tagged }} of them {{ 'has' if tagged == 1 else 'have' }} vibes now.</p>
+    {% if span %}
+    <p><b>That's all {{ total }} album{{ '' if total == 1 else 's' }} from this import.</b>
+      {{ tagged }} of them {{ 'has' if tagged == 1 else 'have' }} vibes now.</p>
+    {% elif untagged %}
+    <p><b>You've been through them all.</b> {{ untagged }} album{{ ' still has' if untagged == 1 else 's still have' }}
+      no vibes; they'll be here next time.</p>
     {% else %}
-    <p>There's nothing here to tag.</p>
+    <p><b>Every album has vibes.</b></p>
     {% endif %}
     <div class="button-row">
-      {% if total %}<a class="btn" href="/triage?ids={{ ids }}&i={{ total - 1 }}">← Back</a>{% endif %}
+      {% if prev_url %}<a class="btn" href="{{ prev_url }}">← Back</a>{% endif %}
+      {% if untagged %}<a class="btn" href="/triage">{{ "Start again" if not span else "Tag all " ~ untagged ~ " without vibes" }} →</a>{% endif %}
       <a class="btn primary" href="/">Go to library</a>
     </div>
   </div>

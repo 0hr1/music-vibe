@@ -114,8 +114,29 @@ document.addEventListener("submit", (e) => {
     });
   });
 
+  // Going through albums without vibes, the ones you tag leave the list, so Back follows the trail of
+  // cards seen in this tab instead. It starts afresh whenever you arrive from outside triage.
+  const TRAIL = "triage-trail";
+  const readTrail = () => { try { return JSON.parse(sessionStorage.getItem(TRAIL)) || []; } catch { return []; } };
+  const writeTrail = (t) => { try { sessionStorage.setItem(TRAIL, JSON.stringify(t.slice(-200))); } catch {} };
+  const backLink = document.querySelector("[data-history]");
+  if (backLink) {
+    const here = location.pathname;
+    let trail = readTrail();
+    let fromCard = false;
+    try { fromCard = /^\/triage\/\d+$/.test(new URL(document.referrer).pathname); } catch {}
+    if (!fromCard) trail = [];
+    if (trail.at(-2) === here) trail.pop();  // came back
+    else if (trail.at(-1) !== here) trail.push(here);  // (the last one is a reload)
+    writeTrail(trail);
+    if (trail.length > 1) {
+      backLink.href = trail.at(-2);
+      backLink.hidden = false;
+    }
+  }
+
   const go = (dir) => {
-    const link = document.querySelector(`[data-triage-nav="${dir}"]`);
+    const link = document.querySelector(`[data-triage-nav="${dir}"]:not([hidden])`);
     if (!link) return;
     const leave = () => { location.href = link.href; };
     if (saving.size) waiting.push(leave); else leave();
@@ -167,6 +188,10 @@ document.addEventListener("submit", (e) => {
     const bar = document.querySelector(".triage-progress");
     if (!bar) return;
     const here = document.querySelector("[data-triage-card] input[name=vibes]:checked") ? 1 : 0;
+    if (bar.dataset.leftOthers !== undefined) {  // going through albums without vibes
+      bar.querySelector("[data-left]").textContent = Number(bar.dataset.leftOthers) + 1 - here;
+      return;
+    }
     const tagged = Number(bar.dataset.taggedOthers) + here;
     bar.querySelector("[data-tagged]").textContent = tagged;
     bar.querySelector("[data-left]").textContent = Number(bar.dataset.total) - tagged;
@@ -206,7 +231,9 @@ document.addEventListener("submit", (e) => {
 
   document.addEventListener("submit", (e) => {
     const title = e.target.dataset?.confirmRemove;
-    if (title !== undefined && !confirm(`Remove “${title}” from your library? This can't be undone.`)) e.preventDefault();
+    if (title === undefined) return;
+    if (!confirm(`Remove “${title}” from your library? This can't be undone.`)) e.preventDefault();
+    else writeTrail(readTrail().filter((p) => p !== location.pathname));  // or Back would lead to it
   });
 
   // Coming back with the browser's back button shows a cached page; reload it so vibes are current

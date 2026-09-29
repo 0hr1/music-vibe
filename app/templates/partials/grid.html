@@ -34,3 +34,5 @@
   <p><a class="btn primary" href="/albums/new">+ Add your first album</a></p>
 </div>
 {% endif %}
+{#- After a bulk edit, the library's "Tag N untagged" button is sent along to replace the old one -#}
+{% if oob_untagged is defined %}{% with oob = true, untagged = oob_untagged %}{% include "partials/untagged_button.html" %}{% endwith %}{% endif %}
