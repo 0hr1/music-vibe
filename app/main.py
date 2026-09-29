@@ -9,6 +9,7 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -155,11 +156,28 @@ templates.env.globals["spotify_enabled"] = spotify.enabled
 templates.env.globals["static_url"] = static_url
 
 
+def _local_path(url: str) -> str | None:
+    """The path and query of a URL on this site, or None: only these may be sent back to after login.
+    Browsers take "//host", "/\\host" and "/<tab>/host" to another site, so those are refused."""
+    return url if re.fullmatch(r"/(?![/\\])[^\x00-\x20\x7f\\]*", url) else None
+
+
 @app.exception_handler(LoginRequired)
 async def _login_required(request: Request, _exc):
+    """Off to the login page, which comes back here afterwards: to this page, or for a background
+    (htmx) request or a form sent after the session ran out, the page it came from."""
+    if request.method == "GET" and not request.headers.get("HX-Request"):
+        back = request.url
+    else:
+        back = urlsplit(request.headers.get("HX-Current-URL") or request.headers.get("referer") or "")
+        if back.netloc != request.url.netloc:
+            back = None
+    target = "/login"
+    if back and (path := back.path + (f"?{back.query}" if back.query else "")) not in ("/", "/login"):
+        target += "?" + urlencode({"next": path})
     if request.headers.get("HX-Request"):
-        return Response(status_code=204, headers={"HX-Redirect": "/login"})
-    return RedirectResponse("/login", status_code=303)
+        return Response(status_code=204, headers={"HX-Redirect": target})
+    return RedirectResponse(target, status_code=303)
 
 
 def render(request: Request, name: str, status_code: int = 200, **ctx):
@@ -210,24 +228,27 @@ def needs_invite(db: Session, username: str) -> bool:
 
 
 @app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request, db: Session = Depends(get_db)):
-    return render(request, "login.html", needs_code=not signup_open(db))
+def login_page(request: Request, next: str = "", db: Session = Depends(get_db)):
+    return render(request, "login.html", needs_code=not signup_open(db), next=_local_path(next))
 
 
 @app.post("/login")
-def login(request: Request, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+def login(request: Request, username: str = Form(...), password: str = Form(...), next: str = Form(""),
+          db: Session = Depends(get_db)):
+    next = _local_path(next)
     limits = _login_limits(request, username)
     if any(limiter.blocked(key) for limiter, key in limits):
-        return render(request, "login.html", 429, error=TOO_MANY, username=username, needs_code=not signup_open(db))
+        return render(request, "login.html", 429, error=TOO_MANY, username=username, next=next,
+                      needs_code=not signup_open(db))
     user = db.scalar(select(User).where(func.lower(User.username) == username.strip().lower()))
     if not check_login(user, password):
         for limiter, key in limits:
             limiter.hit(key)
         return render(request, "login.html", 401, error="Wrong username or password.",
-                      username=username, needs_code=not signup_open(db))
+                      username=username, next=next, needs_code=not signup_open(db))
     ratelimit.login_by_user_ip.reset(limits[1][1])
     log_in(request, user)
-    return redirect("/")
+    return redirect(next or "/")
 
 
 @app.get("/register", response_class=HTMLResponse)

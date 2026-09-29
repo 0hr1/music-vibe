@@ -370,3 +370,18 @@ def test_browser_back_to_the_library_shows_the_new_vibes(logged_in, make_album):
     page.go_back()
     expect(page.get_by_role("link", name="🏷 Tag 1 untagged")).to_be_visible()
     expect(page.locator(".card:has-text('A') .chip")).to_have_text("fall")
+
+
+def test_logged_out_mid_triage_comes_back_to_the_card(logged_in, make_album):
+    _untagged_cards(make_album, "A", "B")
+    page = logged_in
+    page.goto("/triage")
+    expect(_heading(page, "A")).to_be_visible()
+    page.context.clear_cookies()  # the session runs out
+    _vibe(page, "fall").click()  # that save is refused...
+    expect(page).to_have_url(re.compile(r"/login\?next="))
+    page.get_by_role("textbox", name="User name:").fill("tester")
+    page.get_by_label("Password:").fill("password1")
+    page.get_by_role("button", name="OK").click()
+    expect(_heading(page, "A")).to_be_visible()  # ...but you're back on the card to tick it again
+    expect(_vibe(page, "fall")).not_to_be_checked()

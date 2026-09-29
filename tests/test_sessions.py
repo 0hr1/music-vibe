@@ -92,3 +92,42 @@ def test_login_for_unknown_user_still_hashes(client, monkeypatch):
     monkeypatch.setattr(auth, "verify_password", lambda p, h: calls.append(h) or real(p, h))
     TestClient(app).post("/login", data={"username": "nobody", "password": "whatever1"})
     assert calls
+
+
+def _log_in(c, **extra):
+    return c.post("/login", data={"username": "tester", "password": "password1", **extra}, follow_redirects=False)
+
+
+def test_login_goes_back_to_the_page_asked_for(user, make_album):
+    album = make_album("A")
+    c = TestClient(app)
+    r = c.get(f"/albums/{album.id}?x=1", follow_redirects=False)
+    assert r.headers["location"] == f"/login?next=%2Falbums%2F{album.id}%3Fx%3D1"
+    assert f'name="next" value="/albums/{album.id}?x=1"' in c.get(r.headers["location"]).text
+    assert _log_in(c, password="wrong", next="/stats").status_code == 401
+    assert 'name="next" value="/stats"' in _log_in(c, password="wrong", next="/stats").text  # kept on retry
+    assert _log_in(c, next=f"/albums/{album.id}?x=1").headers["location"] == f"/albums/{album.id}?x=1"
+
+
+def test_login_page_itself_needs_no_next(user):
+    c = TestClient(app)
+    assert c.get("/", follow_redirects=False).headers["location"] == "/login"
+    assert _log_in(c).headers["location"] == "/"
+
+
+def test_background_request_goes_back_to_the_page_it_came_from(user, make_album):
+    album = make_album("A")
+    c = TestClient(app)
+    r = c.post(f"/triage/{album.id}/vibes", headers={"HX-Request": "true",
+                                                      "HX-Current-URL": f"http://testserver/triage/{album.id}"})
+    assert r.headers["HX-Redirect"] == f"/login?next=%2Ftriage%2F{album.id}"
+    r = c.post(f"/triage/{album.id}/vibes", headers={"HX-Request": "true",
+                                                      "HX-Current-URL": f"http://elsewhere.example/triage/{album.id}"})
+    assert r.headers["HX-Redirect"] == "/login"
+
+
+def test_login_never_sends_you_off_site(user):
+    for next in ("//evil.example", "/\\evil.example", "/\t/evil.example", "https://evil.example", "evil"):
+        c = TestClient(app)
+        assert 'name="next"' not in c.get("/login", params={"next": next}).text
+        assert _log_in(c, next=next).headers["location"] == "/", next
