@@ -9,7 +9,7 @@
   <li>
     <button type="button" class="result"
             hx-get="/albums/prefill?source={{ r.source }}&id={{ r.id }}" hx-target="#album-fields"
-            hx-indicator="#album-fields">
+            hx-include="#album-fields [name=vibes], #album-fields [name=notes]" hx-indicator="#album-fields">
       <span class="thumb"><img src="{{ r.thumb }}" alt="" loading="lazy" onerror="this.remove()"></span>
       <span class="result-text">
         <b>{{ r.title }}</b>

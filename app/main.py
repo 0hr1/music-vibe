@@ -640,8 +640,10 @@ async def search_albums_mb(request: Request, q: str = "", user: User = Depends(c
 
 
 @app.get("/albums/prefill", response_class=HTMLResponse)
-async def prefill_album(request: Request, source: str, id: str, user: User = Depends(current_user),
-                        db: Session = Depends(get_db)):
+async def prefill_album(request: Request, source: str, id: str, vibes: list[str] = Query(default=[]),
+                        notes: str = "", user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The add form's fields for a search result. Vibes ticked and notes typed for a result picked
+    earlier are kept: they're the user's, not the album's."""
     try:
         if source == "deezer" and id.isdigit():
             prefill = await deezer.get_album(id)
@@ -653,6 +655,7 @@ async def prefill_album(request: Request, source: str, id: str, user: User = Dep
         prefill = {}
     return render(request, "partials/album_fields.html", vibes=_user_vibes(db, user), prefill=prefill,
                   album=None, lookup_failed=not prefill, refine=source == "deezer" and bool(prefill),
+                  keep_vibes=[int(n) for n in vibes if re.fullmatch(r"[0-9]{1,9}", n)], keep_notes=notes,
                   owned=_owned_copy(db, user, prefill) if prefill else None)
 
 

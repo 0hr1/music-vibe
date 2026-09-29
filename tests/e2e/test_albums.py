@@ -173,3 +173,22 @@ def test_no_warning_for_an_album_you_dont_have(logged_in, make_album):
     _pick_loveless(page)
     expect(page.get_by_role("spinbutton", name="Year")).to_have_value("1991")
     expect(page.locator(".notice")).to_have_count(0)
+
+
+def test_picking_another_result_keeps_your_vibes_and_notes(logged_in, db):
+    page = logged_in
+    _pick_loveless(page)
+    page.locator("label.chip-toggle", has_text="fall").click()
+    page.get_by_role("textbox", name="Notes").fill("for rainy days")
+    page.get_by_role("textbox", name="Title").fill("Wrong edition")
+
+    page.get_by_role("button", name="Loveless").click()  # picked again (as if another edition)
+    expect(page.get_by_role("textbox", name="Title")).to_have_value("Loveless")
+    expect(page.locator("label.chip-toggle", has_text="fall").locator("input")).to_be_checked()
+    expect(page.locator("label.chip-toggle", has_text="summer").locator("input")).not_to_be_checked()
+    expect(page.get_by_role("textbox", name="Notes")).to_have_value("for rainy days")
+
+    page.get_by_role("button", name="Add to library").click()
+    expect(page.locator(".card")).to_have_count(1)
+    album = db.query(Item).one()
+    assert [v.name for v in album.vibes] == ["fall"] and album.notes == "for rainy days"

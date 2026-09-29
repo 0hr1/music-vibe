@@ -9,8 +9,8 @@
   {%- set prefill = prefill or {} -%}
   {%- set v_title, v_creator, v_year = prefill.title, prefill.artist, prefill.year -%}
   {%- set v_genres = (prefill.genres or [])|join(", ") -%}
-  {%- set v_selected = [] -%}
-  {%- set v_spotify, v_notes = "", "" -%}
+  {%- set v_selected = keep_vibes or [] -%}
+  {%- set v_spotify, v_notes = "", keep_notes or "" -%}
   {%- set v_cover = prefill.cover_url or "" -%}
 {%- endif -%}
 {% if lookup_failed %}<p class="error">Couldn't load that album's details. You can fill the fields in by hand.</p>{% endif %}
