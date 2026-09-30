@@ -60,7 +60,7 @@
     <a class="btn primary" href="{{ next_url }}" data-triage-nav="next">{{ "Finish →" if last else "Next →" }}</a>
   </div>
   <p class="muted triage-keys">Keys: <kbd>→</kbd> or <kbd>Enter</kbd> next · <kbd>←</kbd> back</p>
-  {% if prefetch %}<div hidden hx-post="/triage/{{ prefetch }}/refine" hx-trigger="load delay:500ms" hx-swap="none"></div>{% endif %}
+  {% if prefetch %}<div hidden data-quiet-errors hx-post="/triage/{{ prefetch }}/refine" hx-trigger="load delay:500ms" hx-swap="none"></div>{% endif %}
   {% endcall %}
 
   {% else %}

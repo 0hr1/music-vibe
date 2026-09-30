@@ -35,7 +35,7 @@
         <input name="name" value="{{ g.name }}" maxlength="100" required class="grow" aria-label="Genre name">
         <a class="muted count" href="/?genre={{ g.name|urlencode }}">{{ count }} album{{ '' if count == 1 else 's' }}</a>
         <button class="btn" type="submit">Rename</button>
-        <button class="btn danger" type="submit" formaction="/genres/{{ g.id }}/delete"
+        <button class="btn danger" type="submit" formaction="/genres/{{ g.id }}/delete" formnovalidate
                 onclick="return confirm('Remove this genre from all your albums?')">Delete</button>
       </form>
     </li>

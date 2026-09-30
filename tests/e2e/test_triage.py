@@ -238,6 +238,49 @@ def test_every_card_action_then_straight_to_next(logged_in, make_album, make_vib
     assert {k: got[k] for k in want} == want
 
 
+SAVES = "**/triage/*/{vibes,genres,new-vibe}"
+
+
+@pytest.mark.parametrize("action", [a for a in CARD_ACTIONS if a != "cancel new vibe"])
+def test_a_failed_save_says_so_and_stays_on_the_card(logged_in, make_album, make_vibe, db, action):
+    """A save that fails (here the server answers 500) mustn't look as if it worked: the page says
+    so and doesn't move on to the next album, which would leave the edit lost."""
+    do, _ = CARD_ACTIONS[action]
+    a = make_album("This", genres=["pop"], genres_checked=True, vibes=[make_vibe("fall")])
+    b = make_album("Next one", genres_checked=True)
+    page = logged_in
+    page.goto(f"/triage/{a.id}?batch={a.id}-{b.id}")
+    page.route(SAVES, lambda route: route.fulfill(status=500, body="Internal Server Error"))
+    do(page)
+    page.get_by_role("link", name="Next →").click()
+    expect(page.get_by_role("alert")).to_contain_text("Couldn't save")
+    page.wait_for_timeout(300)
+    expect(page.get_by_role("heading", name="This")).to_be_visible()
+    db.expire_all()
+    item = db.get(Item, a.id)
+    assert [v.name for v in item.vibes] == ["fall"] and [g.name for g in item.genres] == ["pop"]
+
+    page.unroute(SAVES)  # once saving works again, carrying on works too
+    page.get_by_role("button", name="OK").click()
+    expect(page.get_by_role("alert")).to_be_hidden()
+    page.get_by_role("link", name="Next →").click()
+    expect(page.get_by_role("heading", name="Next one")).to_be_visible()
+
+
+def test_a_vibe_that_didnt_save_is_unticked_again(logged_in, make_album, make_vibe, db):
+    a = make_album("This", genres_checked=True)
+    b = make_album("Next one", genres_checked=True)
+    page = logged_in
+    page.goto(f"/triage/{a.id}?batch={a.id}-{b.id}")
+    page.route(SAVES, lambda route: route.abort())  # the connection drops
+    _vibe(page, "summer").click()
+    expect(page.get_by_role("alert")).to_contain_text("Couldn't save")
+    expect(_vibe(page, "summer")).not_to_be_checked()
+    expect(page.locator(".triage-progress")).to_contain_text("0 tagged · 2 left")
+    db.expire_all()
+    assert db.get(Item, a.id).vibes == []
+
+
 def test_finish_later_from_the_library(logged_in, make_album, make_vibe):
     make_album("Already done", genres_checked=True, vibes=[make_vibe("winter")])
     for title in ("A", "B", "C"):

@@ -4,6 +4,29 @@ document.addEventListener("click", (e) => {
   if (e.target.closest("[data-close-filters]")) document.body.classList.remove("filters-open");
 });
 
+// A background request that fails (server error, dropped connection, a restart) says so, instead of
+// looking as if it worked. Lookups that only fill in extra details stay quiet.
+function showError(text) {
+  let box = document.getElementById("request-error");
+  if (!box) {
+    box = Object.assign(document.createElement("div"), { id: "request-error", className: "notice request-error" });
+    box.setAttribute("role", "alert");
+    const close = Object.assign(document.createElement("button"), { type: "button", className: "btn", textContent: "OK" });
+    close.addEventListener("click", () => box.remove());
+    box.append(document.createElement("span"), close);
+    document.body.append(box);
+  }
+  box.firstChild.textContent = text;
+}
+function requestFailed(e) {
+  if (e.detail.elt?.closest?.("[data-quiet-errors]")) return;
+  const verb = (e.detail.requestConfig?.verb || "get").toLowerCase();
+  showError(verb === "get" ? "⚠ Couldn't load that. Check your connection and try again."
+    : "⚠ Couldn't save your last change. Check your connection and try again.");
+}
+document.addEventListener("htmx:responseError", requestFailed);
+document.addEventListener("htmx:sendError", requestFailed);
+
 // After picking a search result, bring the prefilled form into view
 document.addEventListener("htmx:afterSwap", (e) => {
   if (e.detail.target.id === "album-fields") {
@@ -127,6 +150,14 @@ document.addEventListener("htmx:afterRequest", (e) => {
 document.addEventListener("htmx:historyRestore", syncSelection);
 syncSelection();
 
+// The bulk bar floats over the bottom of the library; leave room for however tall it wraps
+{
+  const bar = document.querySelector(".bulk-bar");
+  if (bar) new ResizeObserver(() => {
+    bar.closest(".library").style.setProperty("--bulk-bar-h", `${bar.offsetHeight}px`);
+  }).observe(bar);
+}
+
 // Deleting many albums deserves a confirm (capture phase: runs before htmx sees the submit)
 document.addEventListener("submit", (e) => {
   if (e.submitter?.value !== "delete" || e.target.id !== "bulk-form") return;
@@ -150,6 +181,15 @@ document.addEventListener("submit", (e) => {
   });
   document.addEventListener("htmx:afterRequest", (e) => {
     if (!saving.delete(e.detail.xhr)) return;
+    if (!e.detail.successful) {
+      waiting = [];  // stay on this card until the error message is seen (see go())
+      const box = e.detail.requestConfig?.triggeringEvent?.target;
+      if (box?.matches?.(".vibe-toggles input[type=checkbox]")) {  // show the vibe as it's saved
+        box.checked = !box.checked;
+        count();
+      }
+      return;
+    }
     setTimeout(() => {  // htmx starts a save queued behind this one just after it ends
       if (saving.size) return;
       waiting.forEach((go) => go());
@@ -181,6 +221,11 @@ document.addEventListener("submit", (e) => {
   const go = (dir) => {
     const link = document.querySelector(`[data-triage-nav="${dir}"]:not([hidden])`);
     if (!link) return;
+    const error = document.getElementById("request-error");
+    if (error) {  // an edit here didn't save: don't let it go unnoticed by moving on
+      error.querySelector("button").focus();
+      return;
+    }
     const leave = () => { location.href = link.href; };
     if (saving.size) waiting.push(leave); else leave();
   };

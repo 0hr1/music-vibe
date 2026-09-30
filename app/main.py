@@ -240,12 +240,16 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     if any(limiter.blocked(key) for limiter, key in limits):
         return render(request, "login.html", 429, error=TOO_MANY, username=username, next=next,
                       needs_code=not signup_open(db))
+    # Counted before the (slow) password check, so a burst of attempts sent at once can't all get in
+    # ahead of the count; forgiven below if it turns out right.
+    for limiter, key in limits:
+        limiter.hit(key)
     user = db.scalar(select(User).where(func.lower(User.username) == username.strip().lower()))
     if not check_login(user, password):
-        for limiter, key in limits:
-            limiter.hit(key)
         return render(request, "login.html", 401, error="Wrong username or password.",
                       username=username, next=next, needs_code=not signup_open(db))
+    for limiter, key in limits:
+        limiter.undo(key)
     ratelimit.login_by_user_ip.reset(limits[1][1])
     log_in(request, user)
     return redirect(next or "/")
@@ -340,12 +344,15 @@ def change_password(
     limits = _login_limits(request, user.username)
     if any(limiter.blocked(key) for limiter, key in limits):
         error = TOO_MANY
-    elif not verify_password(current, user.password_hash):
-        for limiter, key in limits:
-            limiter.hit(key)
-        error = "Current password is wrong."
     else:
-        error = _password_problem(password, password2)
+        for limiter, key in limits:  # counted first, as on the login page
+            limiter.hit(key)
+        if not verify_password(current, user.password_hash):
+            error = "Current password is wrong."
+        else:
+            for limiter, key in limits:
+                limiter.undo(key)
+            error = _password_problem(password, password2)
     if error:
         return render(request, "account.html", 400, user=user, error=error, admin=is_admin(db, user))
     user.password_hash = hash_password(password)
@@ -980,6 +987,13 @@ async def create_album(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
+    # Fetch the cover before touching the database: once a new genre is written, the database stays
+    # locked for everyone until the commit, and a download can take a while.
+    cover_file = None
+    if cover and cover.filename:
+        cover_file = covers.save_upload(await cover.read(covers.MAX_BYTES + 1), cover.content_type or "")
+    elif covers.is_trusted_url(cover_url):
+        cover_file = await covers.download(cover_url)
     item = Item(
         user_id=user.id,
         kind="album",
@@ -993,10 +1007,7 @@ async def create_album(
     item.genres = _parse_genres(db, genres)
     item.genres_checked = True
     item.vibes = db.scalars(select(Vibe).where(Vibe.user_id == user.id, Vibe.id.in_(vibes))).all()
-    if cover and cover.filename:
-        item.cover_file = covers.save_upload(await cover.read(covers.MAX_BYTES + 1), cover.content_type or "")
-    elif covers.is_trusted_url(cover_url):
-        item.cover_file = await covers.download(cover_url)
+    item.cover_file = cover_file
     db.add(item)
     db.commit()
     return redirect("/")
@@ -1024,6 +1035,7 @@ async def update_album(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
+    upload = await cover.read(covers.MAX_BYTES + 1) if cover and cover.filename else None  # first, as above
     item = _get_album(db, user, album_id)
     item.title = title.strip()[:500] or "Untitled"
     item.creator = creator.strip()[:500]
@@ -1033,8 +1045,8 @@ async def update_album(
     item.genres = _parse_genres(db, genres)
     item.genres_checked = True
     item.vibes = db.scalars(select(Vibe).where(Vibe.user_id == user.id, Vibe.id.in_(vibes))).all()
-    if cover and cover.filename:
-        if new := covers.save_upload(await cover.read(covers.MAX_BYTES + 1), cover.content_type or ""):
+    if upload is not None:
+        if new := covers.save_upload(upload, cover.content_type or ""):
             covers.delete(item.cover_file)
             item.cover_file = new
     elif remove_cover:

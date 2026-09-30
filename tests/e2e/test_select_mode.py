@@ -53,6 +53,20 @@ def test_bulk_add_vibe(logged_in, make_album, make_vibe):
     expect(page.locator(".card:has-text('Two') .chip")).to_have_count(0)
 
 
+def test_bulk_edit_that_fails_says_so(logged_in, make_album, make_vibe, db):
+    winter = make_vibe("winter")
+    make_album("One")
+    page = logged_in
+    page.goto("/")
+    page.click("[data-select-mode][aria-pressed]")
+    page.click(".card:has-text('One')")
+    page.select_option("select[name=bulk_vibe]", label="winter")
+    db.delete(winter)  # deleted in another tab meanwhile, so the server refuses
+    db.commit()
+    page.get_by_role("button", name="+ Add vibe").click()
+    expect(page.get_by_role("alert")).to_contain_text("Couldn't save")
+
+
 def test_library_fits_a_phone(logged_in, make_album):
     make_album("Untagged")  # so every toolbar button shows
     page = logged_in

@@ -33,6 +33,18 @@ def test_create_quick_add_rename_delete(logged_in, make_album, db, user):
     assert "rainy day" in names and "happy" not in names and "rainy sunday" not in names
 
 
+def test_delete_works_after_emptying_the_name(logged_in, make_vibe, db, user):
+    make_vibe("winter")
+    page = logged_in
+    page.goto("/vibes")
+    row = _row(page, "winter")
+    row.get_by_role("textbox", name="Name").fill("")  # a natural first step when getting rid of it
+    page.once("dialog", lambda d: d.accept())
+    row.get_by_role("button", name="Delete").click()
+    expect(_row(page, "winter")).to_have_count(0)
+    assert "winter" not in {v.name for v in db.query(Vibe).filter_by(user_id=user.id)}
+
+
 def test_deleting_a_vibe_keeps_its_albums(logged_in, make_album, make_vibe, db):
     album = make_album("Keeper", vibes=[make_vibe("winter")])
     page = logged_in

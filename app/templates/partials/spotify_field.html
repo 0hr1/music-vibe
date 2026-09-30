@@ -1,6 +1,6 @@
 {#- Spotify link input. With `auto`, it looks the link up as soon as it loads. -#}
 <div class="field" id="spotify-field"
-     {%- if auto %} data-spotify-auto hx-get="/albums/spotify" hx-trigger="load" hx-target="this" hx-swap="outerHTML"
+     {%- if auto %} data-spotify-auto data-quiet-errors hx-get="/albums/spotify" hx-trigger="load" hx-target="this" hx-swap="outerHTML"
      hx-include="[name=title],[name=creator],[name=spotify_url]"{% endif %}>
   <span>Spotify link</span>
   <div class="row">

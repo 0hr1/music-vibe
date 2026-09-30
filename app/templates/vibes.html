@@ -36,7 +36,7 @@
         <input name="name" value="{{ v.name }}" maxlength="64" required class="grow" aria-label="Name">
         <span class="muted count">{{ counts.get(v.id, 0) }} album{{ '' if counts.get(v.id, 0) == 1 else 's' }}</span>
         <button class="btn" type="submit">Save</button>
-        <button class="btn danger" type="submit" formaction="/vibes/{{ v.id }}/delete"
+        <button class="btn danger" type="submit" formaction="/vibes/{{ v.id }}/delete" formnovalidate
                 onclick="return confirm('Delete this vibe? Albums keep everything else.')">Delete</button>
       </form>
     </li>
