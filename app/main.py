@@ -490,7 +490,7 @@ def _filtered_albums(db: Session, user: User, q: str, vibe: list[int], genre: li
     stmt = (
         select(Item)
         .where(Item.user_id == user.id, Item.kind == "album")
-        .options(selectinload(Item.vibes), selectinload(Item.genres))
+        .options(selectinload(Item.vibes))  # the grid shows vibes, not genres
     )
     if q.strip():
         like = f"%{q.strip()}%"
