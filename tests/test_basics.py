@@ -1,7 +1,9 @@
 import re
+import sqlite3
 
 from fastapi.testclient import TestClient
 
+from app.config import DB_PATH
 from app.main import app
 from app.models import Vibe
 
@@ -46,6 +48,51 @@ def test_oversized_cover_upload_is_dropped(client, db):
     big = b"\xff\xd8" + b"0" * (covers.MAX_BYTES + 10)
     client.post("/albums", data={"title": "Huge"}, files={"cover": ("c.jpg", big, "image/jpeg")})
     assert db.query(Item).filter_by(title="Huge").one().cover_file is None
+
+
+def _others_can_write():
+    """Whether another connection could write to the database right now."""
+    conn = sqlite3.connect(DB_PATH, timeout=0.5)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.rollback()
+        return True
+    except sqlite3.OperationalError:
+        return False
+    finally:
+        conn.close()
+
+
+def test_adding_an_album_doesnt_lock_the_database_while_its_cover_downloads(client, db, monkeypatch):
+    from app import covers
+    from app.models import Item
+    seen = []
+
+    async def download(url):
+        seen.append(_others_can_write())
+        return None
+    monkeypatch.setattr(covers, "download", download)
+    client.post("/albums", data={"title": "New", "genres": "brand new genre",
+                                 "cover_url": "https://coverartarchive.org/release/x/front"})
+    assert seen == [True]
+    assert [g.name for g in db.query(Item).filter_by(title="New").one().genres] == ["brand new genre"]
+
+
+def test_editing_an_album_doesnt_lock_the_database_while_its_cover_uploads(client, db, make_album, monkeypatch):
+    from starlette.datastructures import UploadFile
+    album = make_album("Old")
+    seen = []
+    real_read = UploadFile.read
+
+    async def read(self, size=-1):
+        seen.append(_others_can_write())
+        return await real_read(self, size)
+    monkeypatch.setattr(UploadFile, "read", read)
+    client.post(f"/albums/{album.id}", data={"title": "Renamed", "genres": "brand new genre"},
+                files={"cover": ("c.png", b"\x89PNG", "image/png")})
+    assert seen == [True]
+    db.refresh(album)
+    assert album.title == "Renamed" and album.cover_file
 
 
 def test_new_account_lands_on_library_with_season_vibes(db):

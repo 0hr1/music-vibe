@@ -987,6 +987,13 @@ async def create_album(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
+    # Fetch the cover before touching the database: once a new genre is written, the database stays
+    # locked for everyone until the commit, and a download can take a while.
+    cover_file = None
+    if cover and cover.filename:
+        cover_file = covers.save_upload(await cover.read(covers.MAX_BYTES + 1), cover.content_type or "")
+    elif covers.is_trusted_url(cover_url):
+        cover_file = await covers.download(cover_url)
     item = Item(
         user_id=user.id,
         kind="album",
@@ -1000,10 +1007,7 @@ async def create_album(
     item.genres = _parse_genres(db, genres)
     item.genres_checked = True
     item.vibes = db.scalars(select(Vibe).where(Vibe.user_id == user.id, Vibe.id.in_(vibes))).all()
-    if cover and cover.filename:
-        item.cover_file = covers.save_upload(await cover.read(covers.MAX_BYTES + 1), cover.content_type or "")
-    elif covers.is_trusted_url(cover_url):
-        item.cover_file = await covers.download(cover_url)
+    item.cover_file = cover_file
     db.add(item)
     db.commit()
     return redirect("/")
@@ -1031,6 +1035,7 @@ async def update_album(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
+    upload = await cover.read(covers.MAX_BYTES + 1) if cover and cover.filename else None  # first, as above
     item = _get_album(db, user, album_id)
     item.title = title.strip()[:500] or "Untitled"
     item.creator = creator.strip()[:500]
@@ -1040,8 +1045,8 @@ async def update_album(
     item.genres = _parse_genres(db, genres)
     item.genres_checked = True
     item.vibes = db.scalars(select(Vibe).where(Vibe.user_id == user.id, Vibe.id.in_(vibes))).all()
-    if cover and cover.filename:
-        if new := covers.save_upload(await cover.read(covers.MAX_BYTES + 1), cover.content_type or ""):
+    if upload is not None:
+        if new := covers.save_upload(upload, cover.content_type or ""):
             covers.delete(item.cover_file)
             item.cover_file = new
     elif remove_cover:
