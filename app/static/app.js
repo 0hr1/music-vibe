@@ -150,6 +150,14 @@ document.addEventListener("htmx:afterRequest", (e) => {
 document.addEventListener("htmx:historyRestore", syncSelection);
 syncSelection();
 
+// The bulk bar floats over the bottom of the library; leave room for however tall it wraps
+{
+  const bar = document.querySelector(".bulk-bar");
+  if (bar) new ResizeObserver(() => {
+    bar.closest(".library").style.setProperty("--bulk-bar-h", `${bar.offsetHeight}px`);
+  }).observe(bar);
+}
+
 // Deleting many albums deserves a confirm (capture phase: runs before htmx sees the submit)
 document.addEventListener("submit", (e) => {
   if (e.submitter?.value !== "delete" || e.target.id !== "bulk-form") return;
