@@ -15,7 +15,7 @@ def test_random_order_shuffle_and_keep(logged_in, make_album, make_vibe):
     page = logged_in
     page.goto("/?sort=title&order=asc")
     expect(page.locator(".card-title").first).to_have_text("Album 00")
-    shuffle = page.get_by_role("button", name="🔀 Shuffle")
+    shuffle = page.get_by_role("button", name="⤮ Shuffle")
     expect(shuffle).to_be_hidden()
 
     page.get_by_label("Order").select_option("random")
