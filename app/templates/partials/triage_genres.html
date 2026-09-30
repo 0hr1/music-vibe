@@ -1,6 +1,6 @@
 {#- An album's genres on the triage card, each with a button to remove it. With `refine`, it asks
 MusicBrainz for better ones as soon as it loads. -#}
-<div id="triage-genres"{% if refine %} hx-post="/triage/{{ album.id }}/refine" hx-trigger="load" hx-swap="outerHTML"{% endif %}>
+<div id="triage-genres"{% if refine %} data-quiet-errors hx-post="/triage/{{ album.id }}/refine" hx-trigger="load" hx-swap="outerHTML"{% endif %}>
   {% if album.genres %}
   <ul class="genre-chips">
     {% for g in album.genres|sort(attribute="name") %}

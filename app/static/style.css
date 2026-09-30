@@ -195,6 +195,11 @@ fieldset.group legend small { font-weight: normal; color: var(--muted); }
   box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
 }
 .owned-notice { margin-bottom: 12px; }
+.request-error {
+  position: fixed; z-index: 100; top: 12px; left: 50%; transform: translateX(-50%);
+  width: max-content; max-width: calc(100vw - 32px);
+  display: flex; align-items: center; gap: 12px; font-weight: bold;
+}
 .big-icon { font-size: 40px; line-height: 1; }
 
 .desktop { padding: 16px; max-width: 1440px; margin: 0 auto; }
