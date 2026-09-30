@@ -45,6 +45,12 @@ class Limiter:
         while len(self._hits) > self.max_keys:
             self._hits.popitem(last=False)
 
+    def undo(self, *keys: str) -> None:
+        """Takes back the latest hit: an attempt is counted before it's checked, then forgiven if it succeeds."""
+        for k in keys:
+            if hits := self._hits.get(k):
+                hits.pop()
+
     def reset(self, *keys: str) -> None:
         for k in keys:
             self._hits.pop(k, None)

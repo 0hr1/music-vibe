@@ -1,10 +1,13 @@
 import asyncio
+import hashlib
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 from fastapi.testclient import TestClient
 
-from app import main, ratelimit
+from app import auth, main, ratelimit
 from app.main import app
 
 
@@ -115,3 +118,61 @@ def test_throttle_spaces_calls_and_refuses_long_queues():
         assert any(isinstance(r, httpx.TimeoutException) for r in results)
 
     asyncio.run(run())
+
+
+def _slow_hashing(monkeypatch, seconds=0.05):
+    """Password checks that take a while, as they do for real, and a count of how many run at once."""
+    real, running, peak, lock = hashlib.scrypt, [0], [0], threading.Lock()
+
+    def scrypt(*args, **kwargs):
+        with lock:
+            running[0] += 1
+            peak[0] = max(peak[0], running[0])
+        time.sleep(seconds)
+        with lock:
+            running[0] -= 1
+        return real(*args, **kwargs)
+    monkeypatch.setattr(hashlib, "scrypt", scrypt)
+    return peak
+
+
+def _all_at_once(n, fn):
+    with ThreadPoolExecutor(n) as pool:
+        return list(pool.map(lambda i: fn(i), range(n)))
+
+
+def test_only_a_few_password_hashes_run_at_once(monkeypatch):
+    peak = _slow_hashing(monkeypatch)
+    stored = auth.hash_password("password1")
+    _all_at_once(12, lambda i: auth.verify_password("wrong-pass", stored))
+    assert peak[0] <= 2
+
+
+def test_a_burst_of_logins_cant_outrun_the_limit(client, monkeypatch):
+    _slow_hashing(monkeypatch)
+    codes = _all_at_once(25, lambda i: _login(TestClient(app), "wrong-pass").status_code)
+    assert codes.count(401) == ratelimit.login_by_user_ip.limit
+    assert codes.count(429) == 25 - ratelimit.login_by_user_ip.limit
+
+
+def test_a_right_password_doesnt_count_against_the_limits(client):
+    c = TestClient(app)
+    for _ in range(ratelimit.login_by_ip.limit + 5):
+        assert _login(c, "password1").status_code == 200
+    c.post("/logout")
+    for _ in range(ratelimit.login_by_user_ip.limit - 1):
+        _login(c, "wrong-pass")
+    assert _login(c, "password1").status_code == 200
+
+
+def test_changing_password_counts_attempts_first_and_forgives_the_right_one(client, monkeypatch):
+    for _ in range(ratelimit.login_by_user_ip.limit + 2):
+        r = client.post("/account/password", data={"current": "password1", "password": "password2",
+                                                    "password2": "password2"})
+        assert r.status_code == 200 and "saved" in str(r.url)
+        client.post("/account/password", data={"current": "password2", "password": "password1",
+                                                "password2": "password1"})
+    _slow_hashing(monkeypatch)
+    codes = _all_at_once(15, lambda i: client.post("/account/password", data={
+        "current": "wrong-pass", "password": "password3", "password2": "password3"}).text)
+    assert sum("Current password is wrong" in t for t in codes) == ratelimit.login_by_user_ip.limit

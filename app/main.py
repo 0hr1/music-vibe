@@ -240,12 +240,16 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     if any(limiter.blocked(key) for limiter, key in limits):
         return render(request, "login.html", 429, error=TOO_MANY, username=username, next=next,
                       needs_code=not signup_open(db))
+    # Counted before the (slow) password check, so a burst of attempts sent at once can't all get in
+    # ahead of the count; forgiven below if it turns out right.
+    for limiter, key in limits:
+        limiter.hit(key)
     user = db.scalar(select(User).where(func.lower(User.username) == username.strip().lower()))
     if not check_login(user, password):
-        for limiter, key in limits:
-            limiter.hit(key)
         return render(request, "login.html", 401, error="Wrong username or password.",
                       username=username, next=next, needs_code=not signup_open(db))
+    for limiter, key in limits:
+        limiter.undo(key)
     ratelimit.login_by_user_ip.reset(limits[1][1])
     log_in(request, user)
     return redirect(next or "/")
@@ -340,12 +344,15 @@ def change_password(
     limits = _login_limits(request, user.username)
     if any(limiter.blocked(key) for limiter, key in limits):
         error = TOO_MANY
-    elif not verify_password(current, user.password_hash):
-        for limiter, key in limits:
-            limiter.hit(key)
-        error = "Current password is wrong."
     else:
-        error = _password_problem(password, password2)
+        for limiter, key in limits:  # counted first, as on the login page
+            limiter.hit(key)
+        if not verify_password(current, user.password_hash):
+            error = "Current password is wrong."
+        else:
+            for limiter, key in limits:
+                limiter.undo(key)
+            error = _password_problem(password, password2)
     if error:
         return render(request, "account.html", 400, user=user, error=error, admin=is_admin(db, user))
     user.password_hash = hash_password(password)

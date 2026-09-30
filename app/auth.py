@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import secrets
+import threading
 
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import func, select
@@ -11,18 +12,26 @@ from .db import get_db
 from .models import User
 
 _N, _R, _P = 2**14, 8, 1
+# Each hash takes 16 MiB for a moment, and the server runs requests on up to 40 threads: a burst of
+# logins at once would run a small machine out of memory. The rest wait their turn.
+_hashing = threading.BoundedSemaphore(2)
+
+
+def _scrypt(password: str, salt: bytes, n: int, r: int, p: int) -> bytes:
+    with _hashing:
+        return hashlib.scrypt(password.encode(), salt=salt, n=n, r=r, p=p)
 
 
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
-    digest = hashlib.scrypt(password.encode(), salt=salt, n=_N, r=_R, p=_P)
+    digest = _scrypt(password, salt, _N, _R, _P)
     return f"scrypt${_N}${_R}${_P}${salt.hex()}${digest.hex()}"
 
 
 def verify_password(password: str, stored: str) -> bool:
     try:
         _, n, r, p, salt, digest = stored.split("$")
-        check = hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=int(n), r=int(r), p=int(p))
+        check = _scrypt(password, bytes.fromhex(salt), int(n), int(r), int(p))
         return hmac.compare_digest(check.hex(), digest)
     except ValueError:
         return False
