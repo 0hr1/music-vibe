@@ -38,6 +38,10 @@ measured at all, which is where bugs have got through).
   events, print the values). E.g. htmx fires `htmx:afterRequest` on an ancestor, not the element that
   sent the request, when the response swapped that element out; assuming otherwise left triage's
   Next button stuck.
+- **Pages must stay fast with a big library.** `tests/test_query_counts.py` fails if a page's SQL
+  statement count grows with the number of albums (add new pages to `PAGES`). For timings, run
+  `.venv/bin/python tests/perf/measure_pages.py 5000` before and after a change to a page's query or
+  template (at 5000 albums the library takes ~300ms, since it shows every album).
 - **Only commit when the suite passes**: check pytest's result, not just that the command ran.
 
 ## Changing the database layout
